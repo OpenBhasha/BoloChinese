@@ -53,6 +53,12 @@ NODE_ENV=development
 CLOUDINARY_CLOUD_NAME=your_cloud_name
 CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_API_SECRET=your_api_secret
+
+# First admin, seeded automatically on server startup
+ADMIN_NAME=Super Admin
+ADMIN_EMAIL=admin@bolochinese.com
+ADMIN_PASSWORD=replace_with_a_strong_password
+SEED_ADMIN=true
 ```
 
 ### 2) Frontend environment file
@@ -96,25 +102,46 @@ Default URLs:
 - Backend health: http://localhost:5000/health
 - API base: http://localhost:5000/api
 
-## Seed Default Admin
+## Seed the First Admin
+
+The first admin is created from environment variables, so a production
+deployment needs no manual database step — set the credentials on the backend
+and start the server:
+
+```env
+ADMIN_EMAIL=admin@yourdomain.com
+ADMIN_PASSWORD=a-strong-password
+ADMIN_NAME=Super Admin        # optional, defaults to "Super Admin"
+SEED_ADMIN=true               # optional, set to false to skip seeding at boot
+```
+
+On every boot the server checks the database and:
+- creates the admin when `ADMIN_EMAIL` / `ADMIN_PASSWORD` are set and no admin
+  exists yet (the account is created verified);
+- does nothing if an admin already exists, if the address belongs to an
+  existing non-admin user, or if the variables are unset.
+
+It never overwrites an existing account or password, and a seeding problem is
+logged without stopping the API. Because it only ever creates the *first*
+admin, changing `ADMIN_PASSWORD` later does not reset the account — rotate the
+password through the app.
+
+To seed without starting the API (one-off job, local setup, CI), run the same
+logic from the CLI with the same variables in the environment:
 
 ```bash
 cd backend
 npm run seed
 ```
 
-Default seeded admin:
-- Email: admin@bolochinese.com
-- Password: Admin@123
-
-Change the password after first login.
+Change the password after the first login.
 
 ## Scripts
 
 ### Backend (`backend/package.json`)
 - `npm start` - Start server
 - `npm run dev` - Start with nodemon
-- `npm run seed` - Seed default admin
+- `npm run seed` - Seed the first admin from `ADMIN_EMAIL` / `ADMIN_PASSWORD`
 
 ### Frontend (`frontend/package.json`)
 - `npm run dev` - Start Vite dev server
