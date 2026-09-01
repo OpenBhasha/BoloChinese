@@ -76,10 +76,21 @@ const sortTasksByTaskId = (tasks = []) => {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 const getDashboard = async () => dao.getDashboardStats();
+const getUsersProgress = async () => dao.getPerUserProgress();
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 const getAllUsers = async () => dao.getAllUsers();
 const getPendingUsers = async () => dao.getPendingUsers();
+
+const getUserSubmissions = async (userId) => {
+  const user = await dao.getUserById(userId);
+  if (!user) {
+    const err = new Error("User not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  return dao.getUserSubmissions(userId);
+};
 
 const verifyUser = async (userId) => {
   const user = await dao.verifyUser(userId);
@@ -505,7 +516,9 @@ const createTasksFromExcel = async (projectId, fileBuffer) => {
 
 module.exports = {
   getDashboard,
+  getUsersProgress,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
+  getUserSubmissions,
   assignProjectToUser,
   unassignProjectFromUser,
   getAssignedProjectIdsByUser,

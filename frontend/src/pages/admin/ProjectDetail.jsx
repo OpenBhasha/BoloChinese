@@ -19,6 +19,9 @@ import {
 } from "../../api/admin.api";
 import { Plus, Trash2, Pencil, ChevronLeft, Mic2, FileAudio, FileText, User2, CalendarClock, Upload, Download, MessageSquare } from "lucide-react";
 import { PageSpinner, Spinner } from "../../components/ui/Spinner";
+import PaginationControls from "../../components/admin/PaginationControls";
+import { paginateRows } from "../../utils/pagination";
+import { formatDateTime, formatFileSize } from "../../utils/format";
 import toast from "react-hot-toast";
 
 const EMPTY_TASK = { dialogueId: "", chineseTranscript: "", pinyin: "", assignedTo: "" };
@@ -27,57 +30,6 @@ const ADMIN_PROJECT_VIEWS = {
   SUBMISSIONS: "submissions",
   FLAGS: "flags",
   ERRONEOUS: "erroneous",
-};
-
-const LIST_PAGE_SIZE = 10;
-
-const paginateRows = (rows, page, pageSize = LIST_PAGE_SIZE) => {
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
-  const currentPage = Math.min(Math.max(1, page), totalPages);
-  const startIndex = (currentPage - 1) * pageSize;
-  return {
-    rows: rows.slice(startIndex, startIndex + pageSize),
-    currentPage,
-    totalPages,
-  };
-};
-
-function PaginationControls({ currentPage, totalPages, onPrev, onNext, className = "" }) {
-  return (
-    <div className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 justify-between px-4 py-3 border-t border-[#d2dad0] ${className}`}>
-      <span className="text-xs text-black/60">
-        Page {currentPage} of {totalPages}
-      </span>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onPrev}
-          disabled={currentPage <= 1}
-          className="px-3 py-1.5 rounded border border-[#c3cdc0] text-xs font-semibold text-black/70 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
-        >
-          Previous
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={currentPage >= totalPages}
-          className="px-3 py-1.5 rounded border border-[#c3cdc0] text-xs font-semibold text-black/70 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
-        >
-          Next
-        </button>
-      </div>
-    </div>
-  );
-}
-
-const formatDateTime = (value) => {
-  if (!value) return "Not available";
-  return new Date(value).toLocaleString();
-};
-
-const formatFileSize = (bytes) => {
-  if (!bytes) return "0 KB";
-  return `${(bytes / 1024).toFixed(1)} KB`;
 };
 
 export default function ProjectDetail() {

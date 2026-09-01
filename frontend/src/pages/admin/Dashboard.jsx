@@ -32,7 +32,7 @@ export default function AdminDashboard() {
             <StatCard label="Verified Users" value={stats?.users?.verified} icon={ShieldCheck} color="emerald" />
           </div>
 
-          <div className="grid grid-cols-1 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {/* User breakdown */}
             <div className="card">
               <h2 className="text-sm font-semibold text-primary-500 uppercase tracking-wide mb-4">Users</h2>
@@ -41,6 +41,26 @@ export default function AdminDashboard() {
                   { label: "Verified", value: stats?.users?.verified, color: "text-emerald-500" },
                   { label: "Pending", value: stats?.users?.pending, color: "text-amber-500" },
                   { label: "Total", value: stats?.users?.total, color: "text-primary-900" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="flex items-center justify-between py-2 border-b border-primary-100 last:border-0">
+                    <span className="text-sm text-primary-500">{label}</span>
+                    <span className={`font-bold text-lg ${color}`}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Task submission breakdown */}
+            <div className="card">
+              <h2 className="text-sm font-semibold text-primary-500 uppercase tracking-wide mb-4">Tasks</h2>
+              <div className="space-y-3">
+                {[
+                  { label: "Completed", value: stats?.tasks?.completed, color: "text-emerald-500" },
+                  { label: "Corrected", value: stats?.tasks?.corrected, color: "text-lime-600" },
+                  { label: "Erroneous", value: stats?.tasks?.erroneous, color: "text-red-500" },
+                  { label: "Requires Review", value: stats?.tasks?.requiresReview, color: "text-amber-500" },
+                  { label: "Pending", value: stats?.tasks?.pending, color: "text-primary-500" },
+                  { label: "Total", value: stats?.tasks?.total, color: "text-primary-900" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="flex items-center justify-between py-2 border-b border-primary-100 last:border-0">
                     <span className="text-sm text-primary-500">{label}</span>

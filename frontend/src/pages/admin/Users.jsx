@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import AdminLayout from "../../components/layout/AdminLayout";
 import Modal from "../../components/ui/Modal";
 import DataTable from "datatables.net-dt";
@@ -11,9 +12,12 @@ import {
   getAssignedProjectIdsByUser,
   assignProjectToUser,
   unassignProjectFromUser,
+  getUsersProgress,
 } from "../../api/admin.api";
-import { CheckCircle, Clock, ShieldCheck, FolderUp, Pencil } from "lucide-react";
+import { CheckCircle, Clock, ShieldCheck, FolderUp, Pencil, ChevronRight } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
+import PaginationControls from "../../components/admin/PaginationControls";
+import { paginateRows } from "../../utils/pagination";
 import toast from "react-hot-toast";
 
 export default function AdminUsers() {
@@ -33,6 +37,10 @@ export default function AdminUsers() {
   const [pendingProjectId, setPendingProjectId] = useState("");
   const [assignedProjectIds, setAssignedProjectIds] = useState([]);
   const [loadingAssignedProjects, setLoadingAssignedProjects] = useState(false);
+  const [usersProgress, setUsersProgress] = useState([]);
+  const [progressLoading, setProgressLoading] = useState(true);
+  const [progressSearch, setProgressSearch] = useState("");
+  const [progressPage, setProgressPage] = useState(1);
   const desktopTableRef = useRef(null);
   const dataTableInstanceRef = useRef(null);
 
@@ -44,7 +52,28 @@ export default function AdminUsers() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchUsers(); }, []);
+  const fetchUsersProgress = () => {
+    setProgressLoading(true);
+    getUsersProgress()
+      .then((r) => setUsersProgress(r.data.data || []))
+      .catch(() => toast.error("Failed to load user progress"))
+      .finally(() => setProgressLoading(false));
+  };
+
+  useEffect(() => { fetchUsers(); fetchUsersProgress(); }, []);
+
+  const progressQuery = progressSearch.trim().toLowerCase();
+  const filteredProgress = useMemo(() => {
+    if (!progressQuery) return usersProgress;
+    return usersProgress.filter((u) =>
+      [u.name, u.email].some((value) => value?.toLowerCase().includes(progressQuery))
+    );
+  }, [usersProgress, progressQuery]);
+
+  const { rows: paginatedProgress, currentPage: currentProgressPage, totalPages: totalProgressPages } =
+    paginateRows(filteredProgress, progressPage);
+
+  useEffect(() => { setProgressPage(1); }, [progressQuery]);
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 640);
@@ -376,6 +405,87 @@ export default function AdminUsers() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      <h2 className="text-lg font-bold text-primary-900 mt-10 mb-1">User Progress</h2>
+      <p className="text-primary-400 text-sm mb-4">Assigned, completed, corrected, and erroneous items per user</p>
+
+      {progressLoading ? <PageSpinner /> : (
+        <div className="admin-datatable card p-0 overflow-hidden">
+          <div className="p-4 flex justify-end border-b border-primary-100">
+            <input
+              type="text"
+              value={progressSearch}
+              onChange={(e) => setProgressSearch(e.target.value)}
+              placeholder="Search users…"
+              className="input w-full sm:w-64"
+            />
+          </div>
+
+          <div className="sm:hidden divide-y divide-surface-border">
+            {paginatedProgress.map((u) => (
+              <Link key={u._id} to={`/admin/users/${u._id}`} className="block p-4 space-y-2 hover:bg-primary-50/40">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-primary-900 truncate">{u.name}</p>
+                  <ChevronRight size={16} className="text-primary-300 shrink-0" />
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-primary-500">
+                  <span>Assigned: {u.assigned}</span>
+                  <span>Completed: {u.completed}</span>
+                  <span>Corrected: {u.corrected}</span>
+                  <span>Erroneous: {u.erroneous}</span>
+                  <span>Pending: {u.pending}</span>
+                  <span className="font-semibold text-primary-900">{u.progressPercent}%</span>
+                </div>
+              </Link>
+            ))}
+            {!paginatedProgress.length && (
+              <div className="px-5 py-10 text-center text-slate-500">No users found.</div>
+            )}
+          </div>
+
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-primary-100 bg-primary-50/30">
+                  {["User", "Assigned", "Completed", "Corrected", "Erroneous", "Pending", "Progress", ""].map((h) => (
+                    <th key={h} className="text-left px-5 py-3.5 text-xs font-semibold text-primary-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedProgress.map((u) => (
+                  <tr key={u._id} className="border-b border-primary-100 hover:bg-primary-50/40 transition">
+                    <td className="px-5 py-4 font-medium text-primary-900 whitespace-nowrap">{u.name}</td>
+                    <td className="px-5 py-4 text-primary-500">{u.assigned}</td>
+                    <td className="px-5 py-4 text-primary-500">{u.completed}</td>
+                    <td className="px-5 py-4 text-primary-500">{u.corrected}</td>
+                    <td className="px-5 py-4 text-primary-500">{u.erroneous}</td>
+                    <td className="px-5 py-4 text-primary-500">{u.pending}</td>
+                    <td className="px-5 py-4 font-semibold text-primary-900">{u.progressPercent}%</td>
+                    <td className="px-5 py-4">
+                      <Link to={`/admin/users/${u._id}`} className="text-xs font-semibold text-primary-700 hover:text-primary-900 inline-flex items-center gap-1">
+                        View Details <ChevronRight size={14} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+                {!paginatedProgress.length && (
+                  <tr><td colSpan={8} className="px-5 py-10 text-center text-slate-500">No users found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredProgress.length > 0 && totalProgressPages > 1 && (
+            <PaginationControls
+              currentPage={currentProgressPage}
+              totalPages={totalProgressPages}
+              onPrev={() => setProgressPage((prev) => Math.max(1, prev - 1))}
+              onNext={() => setProgressPage((prev) => Math.min(totalProgressPages, prev + 1))}
+            />
+          )}
         </div>
       )}
 

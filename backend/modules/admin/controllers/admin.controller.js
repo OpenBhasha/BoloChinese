@@ -10,7 +10,24 @@ const getDashboard = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const getUsersProgress = async (req, res, next) => {
+  try {
+    const progress = await svc.getUsersProgress();
+    return successResponse(res, "User progress retrieved.", progress);
+  } catch (err) { next(err); }
+};
+
 // ─── Users ────────────────────────────────────────────────────────────────────
+const getUserSubmissions = async (req, res, next) => {
+  try {
+    const submissions = await svc.getUserSubmissions(req.params.id);
+    return successResponse(res, "User submissions retrieved.", submissions);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 const getAllUsers = async (req, res, next) => {
   try {
     const users = await svc.getAllUsers();
@@ -249,7 +266,9 @@ const addAdminCommentToFlag = async (req, res, next) => {
 
 module.exports = {
   getDashboard,
+  getUsersProgress,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
+  getUserSubmissions,
   assignProjectToUser,
   unassignProjectFromUser,
   getAssignedProjectIdsByUser,

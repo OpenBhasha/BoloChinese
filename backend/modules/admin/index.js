@@ -18,10 +18,12 @@ router.use(authenticate, requireRole("admin"));
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 router.get("/dashboard", ctrl.getDashboard);
+router.get("/users/progress", ctrl.getUsersProgress);
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 router.get("/users", ctrl.getAllUsers);
 router.get("/users/pending", ctrl.getPendingUsers);
+router.get("/users/:id/submissions", [validateObjectId("id"), validate], ctrl.getUserSubmissions);
 router.patch("/users/:id/verify", [validateObjectId("id"), validate], ctrl.verifyUser);
 router.patch("/users/:id", [validateObjectId("id"), ...updateUserValidator, validate], ctrl.updateUser);
 router.patch(

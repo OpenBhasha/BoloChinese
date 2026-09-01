@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminUsers from "./pages/admin/Users";
+import AdminUserDetail from "./pages/admin/UserDetail";
 import AdminProjects from "./pages/admin/Projects";
 import ProjectDetail from "./pages/admin/ProjectDetail";
 import UserDashboard from "./pages/user/Dashboard";
@@ -50,6 +51,7 @@ export default function App() {
           {/* Admin */}
           <Route path="/admin" element={<RequireAuth role="admin"><AdminDashboard /></RequireAuth>} />
           <Route path="/admin/users" element={<RequireAuth role="admin"><AdminUsers /></RequireAuth>} />
+          <Route path="/admin/users/:id" element={<RequireAuth role="admin"><AdminUserDetail /></RequireAuth>} />
           <Route path="/admin/projects" element={<RequireAuth role="admin"><AdminProjects /></RequireAuth>} />
           <Route path="/admin/projects/:id" element={<RequireAuth role="admin"><ProjectDetail /></RequireAuth>} />
 

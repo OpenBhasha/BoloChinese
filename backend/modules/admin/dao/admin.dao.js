@@ -125,6 +125,71 @@ const getAssignedProjectIdsByUser = async (userId) => {
   return assignments.map((a) => a.projectId.toString());
 };
 
+// Per-user rollup for the admin dashboard's user progress table.
+const getPerUserProgress = async () => {
+  const users = await User.find({ role: "user" }).select("name email isVerified createdAt").lean();
+  if (!users.length) return [];
+
+  const [assignments, submissionsByUserStatus] = await Promise.all([
+    ProjectAssignment.find({}).select("userId projectId").lean(),
+    TaskSubmission.aggregate([
+      { $group: { _id: { userId: "$userId", status: "$status" }, count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const projectIdsByUser = new Map();
+  assignments.forEach((a) => {
+    const key = a.userId.toString();
+    if (!projectIdsByUser.has(key)) projectIdsByUser.set(key, []);
+    projectIdsByUser.get(key).push(a.projectId);
+  });
+
+  const statusByUser = new Map();
+  submissionsByUserStatus.forEach((row) => {
+    const key = row._id.userId.toString();
+    if (!statusByUser.has(key)) statusByUser.set(key, {});
+    statusByUser.get(key)[row._id.status] = row.count;
+  });
+
+  return Promise.all(
+    users.map(async (u) => {
+      const key = u._id.toString();
+      const projectIds = projectIdsByUser.get(key) || [];
+      const assigned = projectIds.length ? await Task.countDocuments({ projectId: { $in: projectIds } }) : 0;
+
+      const statuses = statusByUser.get(key) || {};
+      const completed = statuses["completed"] || 0;
+      const corrected = statuses["corrected"] || 0;
+      const erroneous = statuses["erroneous"] || 0;
+      const requiresReview = statuses["requires-review"] || 0;
+      const submitted = Object.values(statuses).reduce((sum, n) => sum + n, 0);
+      const pending = Math.max(0, assigned - submitted);
+      const progressPercent = assigned ? Math.round(((completed + erroneous) / assigned) * 100) : 0;
+
+      return {
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+        isVerified: u.isVerified,
+        assigned,
+        completed,
+        corrected,
+        erroneous,
+        requiresReview,
+        pending,
+        progressPercent,
+      };
+    })
+  );
+};
+
+const getUserSubmissions = async (userId) => {
+  return TaskSubmission.find({ userId })
+    .populate("taskId", "taskId dialogueId chineseTranscript pinyin")
+    .populate("projectId", "name")
+    .sort({ updatedAt: -1 });
+};
+
 const getTaskSubmissions = async (taskId) => {
   return TaskSubmission.find({ taskId })
     .populate("userId", "name email")
@@ -204,4 +269,6 @@ module.exports = {
   deleteTaskSubmission,
   addAdminCommentToFlag,
   getDashboardStats,
+  getPerUserProgress,
+  getUserSubmissions,
 };
