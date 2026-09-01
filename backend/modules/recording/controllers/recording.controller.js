@@ -9,27 +9,24 @@ const shapeRecording = (rec) => {
   const user = rec?.userId ? { name: rec.userId.name, email: rec.userId.email } : null;
 
   const task = rec?.taskId || null;
-  const text = task?.text || null;
-
-  // languageVariants may be a Map or an object; build tag object mapping language->text
-  let tag = {};
-  const lv = task?.languageVariants;
-  if (lv) {
-    if (lv instanceof Map) {
-      for (const [k, v] of lv) {
-        if (v !== undefined && v !== null && String(v).trim() !== "") tag[k] = v;
-      }
-    } else if (typeof lv === "object") {
-      Object.keys(lv).forEach((k) => {
-        const v = lv[k];
-        if (v !== undefined && v !== null && String(v).trim() !== "") tag[k] = v;
-      });
-    }
-  }
+  const dialogueId = task?.dialogueId || null;
+  const chineseTranscript = rec?.correctedChineseTranscript || task?.chineseTranscript || null;
+  const pinyin = rec?.correctedPinyin || task?.pinyin || null;
 
   const project = rec?.projectId ? { _id: rec.projectId._id, name: rec.projectId.name } : null;
 
-  return { _id: rec._id, audio, user, text, tag, project, status: rec.status };
+  return {
+    _id: rec._id,
+    audio,
+    user,
+    dialogueId,
+    chineseTranscript,
+    pinyin,
+    isCorrected: rec?.isCorrected || false,
+    erroneous: rec?.erroneous || { flagged: false, reason: "", markedAt: null },
+    project,
+    status: rec.status,
+  };
 };
 
 // ─── Get all recordings ────────────────────────────────────────────────────

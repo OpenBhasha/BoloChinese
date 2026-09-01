@@ -1,5 +1,7 @@
 const TaskSubmission = require("../../admin/models/taskSubmission.model");
 
+const TASK_SELECT_FIELDS = "taskId dialogueId chineseTranscript pinyin";
+
 // ─── Get all recordings ────────────────────────────────────────────────────
 const getAllRecordings = async () => {
   return TaskSubmission.find()
@@ -11,7 +13,7 @@ const getAllRecordings = async () => {
     .populate({
       path: "taskId",
       model: "Task",
-      select: "taskId type text prompt languageVariants",
+      select: TASK_SELECT_FIELDS,
     })
     .populate({
       path: "projectId",
@@ -33,7 +35,7 @@ const getRecordingsByProject = async (projectId) => {
     .populate({
       path: "taskId",
       model: "Task",
-      select: "taskId type text prompt languageVariants",
+      select: TASK_SELECT_FIELDS,
     })
     .populate({
       path: "projectId",
@@ -55,7 +57,7 @@ const getRecordingsByUser = async (userId) => {
     .populate({
       path: "taskId",
       model: "Task",
-      select: "taskId type text prompt languageVariants",
+      select: TASK_SELECT_FIELDS,
     })
     .populate({
       path: "projectId",
@@ -77,7 +79,7 @@ const getRecordingsByTask = async (taskId) => {
     .populate({
       path: "taskId",
       model: "Task",
-      select: "taskId type text prompt languageVariants",
+      select: TASK_SELECT_FIELDS,
     })
     .populate({
       path: "projectId",
@@ -99,7 +101,7 @@ const getRecordingById = async (id) => {
     .populate({
       path: "taskId",
       model: "Task",
-      select: "taskId type text prompt languageVariants",
+      select: TASK_SELECT_FIELDS,
     })
     .populate({
       path: "projectId",
@@ -120,7 +122,7 @@ const getRecordingsWithAudio = async () => {
     .populate({
       path: "taskId",
       model: "Task",
-      select: "taskId type text prompt languageVariants",
+      select: TASK_SELECT_FIELDS,
     })
     .populate({
       path: "projectId",
