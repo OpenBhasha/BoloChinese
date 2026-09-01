@@ -69,7 +69,39 @@ Copy `frontend/.env.example` to `frontend/.env`:
 VITE_API_BASE_URL=http://localhost:5000/api
 ```
 
-Note: Frontend already falls back to `http://localhost:5000/api` if the variable is not provided.
+Note: when the variable is not provided, the frontend falls back to
+`http://localhost:5000/api` on localhost and to `/api` on the current origin
+anywhere else.
+
+## Deploying (Dokploy / Docker)
+
+`VITE_*` variables are normally inlined by Vite at **build** time, which means a
+prebuilt image ignores environment variables set later by the deployment
+platform. The frontend image avoids that: its entrypoint writes
+`/config.js` from the environment on every container start, and `index.html`
+loads that file before the app bundle.
+
+So on the frontend service, set a normal (runtime) environment variable:
+
+```env
+VITE_API_BASE_URL=https://api.your-domain.com/api
+```
+
+then redeploy or restart the container — no rebuild is needed. `API_BASE_URL`
+works as an alias, and the value may also be passed as a Docker build arg
+(`--build-arg VITE_API_BASE_URL=...`) if you prefer baking it in.
+
+Verify the deployed value by opening `https://your-frontend/config.js`; it
+should show the API URL. If it is empty, the app calls `/api` on its own
+origin, so the frontend host must proxy `/api` to the backend.
+
+On the backend service, set `CORS_ORIGIN` to the frontend's public origin:
+
+```env
+CORS_ORIGIN=https://your-frontend-domain.com
+```
+
+Leaving it empty allows every origin.
 
 ## Install Dependencies
 

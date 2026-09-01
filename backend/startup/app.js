@@ -4,6 +4,7 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const path = require("path");
 const logger = require("../logging/logger");
+const config = require("../properties/config");
 const modulesRouter = require("../modules/index");
 const errorHandler = require("../middlewares/errorHandler");
 
@@ -13,8 +14,27 @@ const createApp = () => {
   // Security
   app.use(helmet());
 
-  // CORS
-  app.use(cors());
+  // CORS — open by default; set CORS_ORIGIN to restrict to known frontends
+  const allowedOrigins = config.corsOrigins;
+  if (allowedOrigins.length > 0) {
+    logger.info(`CORS restricted to: ${allowedOrigins.join(", ")}`);
+    app.use(
+      cors({
+        origin: (origin, callback) => {
+          // No Origin header: same-origin, curl, health checks — always allowed.
+          if (!origin || allowedOrigins.includes(origin.replace(/\/+$/, ""))) {
+            return callback(null, true);
+          }
+          // Omit the CORS headers rather than throwing: the browser blocks the
+          // response on its own, and the server avoids a 500 per request.
+          logger.warn(`Blocked CORS request from origin: ${origin}`);
+          return callback(null, false);
+        },
+      })
+    );
+  } else {
+    app.use(cors());
+  }
 
   // Body parsers — increase limit for audio metadata
   app.use(express.json({ limit: "10mb" }));

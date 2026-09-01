@@ -7,6 +7,14 @@ const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
   nodeEnv: process.env.NODE_ENV || "development",
 
+  // Comma-separated list of allowed browser origins, e.g.
+  // "https://app.example.com,https://admin.example.com".
+  // Empty (the default) allows every origin.
+  corsOrigins: (process.env.CORS_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean),
+
   // First (bootstrap) admin, seeded from the environment on startup.
   // Leave ADMIN_EMAIL / ADMIN_PASSWORD unset to disable seeding entirely.
   admin: {
