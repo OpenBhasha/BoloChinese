@@ -48,12 +48,30 @@ const getTaskDetail = async (taskId, userId) => {
     ...task,
     status: submission?.status || "pending",
     audio: submission?.audio || null,
+    pinyinVerified: submission?.pinyinVerified ?? null,
+    correctedChineseTranscript: submission?.correctedChineseTranscript || "",
+    correctedPinyin: submission?.correctedPinyin || "",
+    isCorrected: submission?.isCorrected || false,
+    erroneous: submission?.erroneous || { flagged: false, reason: "", markedAt: null },
+    audioVerifiedAt: submission?.audioVerifiedAt || null,
   };
 };
 
 const uploadTaskAudio = async (taskId, audioBuffer, userId, fileSize) => {
   // Validate task ownership
   const existing = await getTaskDetail(taskId, userId);
+
+  if (existing.erroneous?.flagged) {
+    const err = new Error("This item is marked erroneous. Reconsider it before recording audio.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!existing.pinyinVerified && !existing.isCorrected) {
+    const err = new Error("Please verify the Pinyin (or correct it) before recording audio.");
+    err.statusCode = 400;
+    throw err;
+  }
 
   if (existing.audio && existing.audio.publicId) {
     try {
@@ -83,10 +101,28 @@ const flagTaskIssue = async (taskId, userId, note = "") => {
   return getTaskDetail(taskId, userId);
 };
 
-const updatePinyinScript = async (taskId, userId, pinyinScript = "") => {
+const verifyPinyin = async (taskId, userId, correct) => {
+  const existing = await getTaskDetail(taskId, userId);
+  await dao.updateSubmissionVerification(taskId, existing.projectId, userId, correct);
+  return getTaskDetail(taskId, userId);
+};
+
+const correctTranscript = async (taskId, userId, { correctedChineseTranscript, correctedPinyin }) => {
+  const existing = await getTaskDetail(taskId, userId);
+  await dao.updateSubmissionCorrection(taskId, existing.projectId, userId, { correctedChineseTranscript, correctedPinyin });
+  return getTaskDetail(taskId, userId);
+};
+
+const markErroneous = async (taskId, userId, reason) => {
+  const existing = await getTaskDetail(taskId, userId);
+  await dao.markSubmissionErroneous(taskId, existing.projectId, userId, reason);
+  return getTaskDetail(taskId, userId);
+};
+
+const reconsiderTask = async (taskId, userId) => {
   // Validates task existence + project assignment, same as every other user-facing task mutation.
   await getTaskDetail(taskId, userId);
-  await dao.updateTaskPinyinScript(taskId, pinyinScript);
+  await dao.reconsiderSubmission(taskId, userId);
   return getTaskDetail(taskId, userId);
 };
 
@@ -98,5 +134,8 @@ module.exports = {
   uploadAudio: uploadTaskAudio,
   skipTask,
   flagTaskIssue,
-  updatePinyinScript,
+  verifyPinyin,
+  correctTranscript,
+  markErroneous,
+  reconsiderTask,
 };

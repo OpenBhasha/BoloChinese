@@ -61,7 +61,6 @@ router.patch("/tasks/:id", [validateObjectId("id"), ...updateTaskValidator, vali
 router.delete("/tasks/:id", [validateObjectId("id"), validate], ctrl.deleteTask);
 
 // ─── Admin view user submissions ─────────────────────────────────────────────
-router.get("/tasks/:id/audio", [validateObjectId("id"), validate], ctrl.streamTaskAudio);
 router.get("/tasks/:id/submissions", [validateObjectId("id"), validate], ctrl.getTaskSubmissions);
 router.get("/submissions/:id/audio", [validateObjectId("id"), validate], ctrl.streamSubmissionAudio);
 router.delete("/submissions/:id", [validateObjectId("id"), validate], ctrl.deleteSubmission);

@@ -22,6 +22,18 @@ const getAssignedProjectIds = async (userId) => {
   return assignments.map((a) => a.projectId);
 };
 
+// Per-user working state merged onto the canonical Task fields for list/detail responses.
+const mergeSubmissionFields = (submission) => ({
+  status: submission?.status || "pending",
+  audio: submission?.audio || null,
+  pinyinVerified: submission?.pinyinVerified ?? null,
+  correctedChineseTranscript: submission?.correctedChineseTranscript || "",
+  correctedPinyin: submission?.correctedPinyin || "",
+  isCorrected: submission?.isCorrected || false,
+  erroneous: submission?.erroneous || { flagged: false, reason: "", markedAt: null },
+  audioVerifiedAt: submission?.audioVerifiedAt || null,
+});
+
 const getTasksForUser = async (userId) => {
   const projectIds = await getAssignedProjectIds(userId);
   if (!projectIds.length) return [];
@@ -32,14 +44,10 @@ const getTasksForUser = async (userId) => {
   ]);
 
   const byTaskId = new Map(submissions.map((s) => [s.taskId.toString(), s]));
-  return sortTasksByTaskId(tasks).map((task) => {
-    const submission = byTaskId.get(task._id.toString());
-    return {
-      ...task,
-      status: submission?.status || "pending",
-      audio: submission?.audio || null,
-    };
-  });
+  return sortTasksByTaskId(tasks).map((task) => ({
+    ...task,
+    ...mergeSubmissionFields(byTaskId.get(task._id.toString())),
+  }));
 };
 
 const getProjectsForUser = async (userId) => {
@@ -63,22 +71,25 @@ const getProjectsForUser = async (userId) => {
   projectIds.forEach((pid) => {
     const key = pid.toString();
     const total = taskIdsByProject.get(key)?.size || 0;
-    statsByProject.set(key, { total, completed: 0, inProgress: 0, pending: total });
+    statsByProject.set(key, { total, completed: 0, inProgress: 0, skipped: 0, erroneous: 0, pending: total });
   });
+
+  const IN_PROGRESS_STATUSES = new Set(["in-progress", "verified", "corrected", "recorded", "requires-review"]);
 
   submissions.forEach((s) => {
     const key = s.projectId.toString();
     if (!statsByProject.has(key)) {
-      statsByProject.set(key, { total: 0, completed: 0, inProgress: 0, skipped: 0, pending: 0 });
+      statsByProject.set(key, { total: 0, completed: 0, inProgress: 0, skipped: 0, erroneous: 0, pending: 0 });
     }
     const stats = statsByProject.get(key);
     if (s.status === "completed") stats.completed += 1;
-    else if (s.status === "in-progress") stats.inProgress += 1;
     else if (s.status === "skipped") stats.skipped += 1;
+    else if (s.status === "erroneous") stats.erroneous += 1;
+    else if (IN_PROGRESS_STATUSES.has(s.status)) stats.inProgress += 1;
   });
 
   statsByProject.forEach((stats) => {
-    const done = stats.completed + stats.inProgress + stats.skipped;
+    const done = stats.completed + stats.inProgress + stats.skipped + stats.erroneous;
     stats.pending = Math.max(0, stats.total - done);
   });
 
@@ -89,6 +100,7 @@ const getProjectsForUser = async (userId) => {
       completed: 0,
       inProgress: 0,
       skipped: 0,
+      erroneous: 0,
       pending: 0,
     },
   }));
@@ -110,22 +122,14 @@ const getTasksForUserByProject = async (userId, projectId) => {
 
   const byTaskId = new Map(submissions.map((s) => [s.taskId.toString(), s]));
 
-  return sortTasksByTaskId(tasks).map((task) => {
-    const submission = byTaskId.get(task._id.toString());
-    return {
-      ...task,
-      status: submission?.status || "pending",
-      audio: submission?.audio || task.audio,
-    };
-  });
+  return sortTasksByTaskId(tasks).map((task) => ({
+    ...task,
+    ...mergeSubmissionFields(byTaskId.get(task._id.toString())),
+  }));
 };
 
 const getTaskByIdForUser = async (taskId) => {
   return Task.findById(taskId).lean();
-};
-
-const updateTaskPinyinScript = async (taskId, pinyinScript) => {
-  return Task.findByIdAndUpdate(taskId, { pinyinScript }, { new: true, runValidators: true });
 };
 
 const getTaskSubmissionForUser = async (taskId, userId) => {
@@ -141,6 +145,7 @@ const saveAudio = async (taskId, projectId, userId, { publicId, url, fileSizeByt
         projectId,
         userId,
         status,
+        audioVerifiedAt: new Date(),
         "audio.provider": "cloudinary",
         "audio.publicId": publicId,
         "audio.url": url,
@@ -191,6 +196,72 @@ const reportTaskIssue = async (taskId, projectId, userId, note = "") => {
   );
 };
 
+const updateSubmissionVerification = async (taskId, projectId, userId, pinyinVerified) => {
+  return TaskSubmission.findOneAndUpdate(
+    { taskId, userId },
+    {
+      $set: {
+        taskId,
+        projectId,
+        userId,
+        pinyinVerified,
+        status: pinyinVerified ? "verified" : "in-progress",
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+const updateSubmissionCorrection = async (taskId, projectId, userId, { correctedChineseTranscript, correctedPinyin }) => {
+  return TaskSubmission.findOneAndUpdate(
+    { taskId, userId },
+    {
+      $set: {
+        taskId,
+        projectId,
+        userId,
+        correctedChineseTranscript,
+        correctedPinyin,
+        isCorrected: true,
+        status: "corrected",
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+const markSubmissionErroneous = async (taskId, projectId, userId, reason) => {
+  return TaskSubmission.findOneAndUpdate(
+    { taskId, userId },
+    {
+      $set: {
+        taskId,
+        projectId,
+        userId,
+        "erroneous.flagged": true,
+        "erroneous.reason": reason,
+        "erroneous.markedAt": new Date(),
+        status: "erroneous",
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+const reconsiderSubmission = async (taskId, userId) => {
+  return TaskSubmission.findOneAndUpdate(
+    { taskId, userId },
+    {
+      $set: {
+        "erroneous.flagged": false,
+        pinyinVerified: null,
+        status: "in-progress",
+      },
+    },
+    { new: true }
+  );
+};
+
 module.exports = {
   getTasksForUser,
   getProjectsForUser,
@@ -202,5 +273,8 @@ module.exports = {
   saveAudio,
   markTaskSkipped,
   reportTaskIssue,
-  updateTaskPinyinScript,
+  updateSubmissionVerification,
+  updateSubmissionCorrection,
+  markSubmissionErroneous,
+  reconsiderSubmission,
 };

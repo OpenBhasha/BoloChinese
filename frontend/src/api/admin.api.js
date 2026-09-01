@@ -39,7 +39,6 @@ export const updateTask = (id, data) => api.patch(`/admin/tasks/${id}`, data);
 export const deleteTask = (id) => api.delete(`/admin/tasks/${id}`);
 
 // Admin view user submissions
-export const streamTaskAudio = (id) => api.get(`/admin/tasks/${id}/audio`, { responseType: 'blob' });
 export const getTaskSubmissions = (id) => api.get(`/admin/tasks/${id}/submissions`);
 export const streamSubmissionAudio = (id) => api.get(`/admin/submissions/${id}/audio`, { responseType: 'blob' });
 export const deleteSubmission = (id) => api.delete(`/admin/submissions/${id}`);

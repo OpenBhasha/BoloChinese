@@ -120,12 +120,58 @@ const flagTaskIssue = async (req, res, next) => {
   }
 };
 
-const updatePinyinScript = async (req, res, next) => {
+const verifyPinyin = async (req, res, next) => {
   try {
-    const task = await userSvc.updatePinyinScript(req.params.id, req.user.id, req.body.pinyinScript);
-    return successResponse(res, "Pinyin script updated.", {
+    const task = await userSvc.verifyPinyin(req.params.id, req.user.id, req.body.correct);
+    return successResponse(res, "Pinyin verification recorded.", {
       taskId: task.taskId,
-      pinyinScript: task.pinyinScript,
+      status: task.status,
+      pinyinVerified: task.pinyinVerified,
+    });
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const correctTranscript = async (req, res, next) => {
+  try {
+    const task = await userSvc.correctTranscript(req.params.id, req.user.id, {
+      correctedChineseTranscript: req.body.correctedChineseTranscript,
+      correctedPinyin: req.body.correctedPinyin,
+    });
+    return successResponse(res, "Correction saved.", {
+      taskId: task.taskId,
+      status: task.status,
+      correctedChineseTranscript: task.correctedChineseTranscript,
+      correctedPinyin: task.correctedPinyin,
+    });
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const markErroneous = async (req, res, next) => {
+  try {
+    const task = await userSvc.markErroneous(req.params.id, req.user.id, req.body.reason);
+    return successResponse(res, "Task marked erroneous.", {
+      taskId: task.taskId,
+      status: task.status,
+      erroneous: task.erroneous,
+    });
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const reconsiderTask = async (req, res, next) => {
+  try {
+    const task = await userSvc.reconsiderTask(req.params.id, req.user.id);
+    return successResponse(res, "Task reopened for review.", {
+      taskId: task.taskId,
+      status: task.status,
     });
   } catch (err) {
     if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
@@ -142,5 +188,8 @@ module.exports = {
   streamAudio,
   skipTask,
   flagTaskIssue,
-  updatePinyinScript,
+  verifyPinyin,
+  correctTranscript,
+  markErroneous,
+  reconsiderTask,
 };

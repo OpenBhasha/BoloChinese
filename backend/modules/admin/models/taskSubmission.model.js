@@ -33,9 +33,48 @@ const taskSubmissionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "in-progress", "completed", "skipped"],
+      enum: [
+        "pending",
+        "in-progress",
+        "verified",
+        "corrected",
+        "recorded",
+        "completed",
+        "erroneous",
+        "requires-review",
+        "skipped",
+      ],
       default: "pending",
       index: true,
+    },
+    pinyinVerified: {
+      type: Boolean,
+      default: null,
+    },
+    correctedChineseTranscript: {
+      type: String,
+      trim: true,
+      maxlength: [20000, "Corrected transcript must be at most 20000 characters"],
+      default: "",
+    },
+    correctedPinyin: {
+      type: String,
+      trim: true,
+      maxlength: [20000, "Corrected pinyin must be at most 20000 characters"],
+      default: "",
+    },
+    isCorrected: {
+      type: Boolean,
+      default: false,
+    },
+    erroneous: {
+      flagged: { type: Boolean, default: false },
+      reason: { type: String, trim: true, maxlength: 1000, default: "" },
+      markedAt: { type: Date, default: null },
+    },
+    audioVerifiedAt: {
+      type: Date,
+      default: null,
     },
     reportedIssue: {
       flagged: { type: Boolean, default: false },

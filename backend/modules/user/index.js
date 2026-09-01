@@ -4,7 +4,7 @@ const ctrl = require("./controllers/user.controller");
 const { authenticate, requireRole } = require("../../middlewares/auth");
 const validate = require("../../middlewares/validate");
 const { validateObjectId } = require("../../validators/common.validator");
-const { updatePinyinScriptValidator } = require("./validators/user.validator");
+const { verifyPinyinValidator, correctTranscriptValidator, markErroneousValidator } = require("./validators/user.validator");
 const audioUpload = require("./services/audioUpload.service");
 
 // All user routes require authentication + user role
@@ -39,11 +39,32 @@ router.post("/tasks/:id/skip", [validateObjectId("id"), validate], ctrl.skipTask
 // POST /api/user/tasks/:id/flag
 router.post("/tasks/:id/flag", [validateObjectId("id"), validate], ctrl.flagTaskIssue);
 
-// PATCH /api/user/tasks/:id/pinyin-script
+// PATCH /api/user/tasks/:id/verify-pinyin
 router.patch(
-  "/tasks/:id/pinyin-script",
-  [validateObjectId("id"), ...updatePinyinScriptValidator, validate],
-  ctrl.updatePinyinScript
+  "/tasks/:id/verify-pinyin",
+  [validateObjectId("id"), ...verifyPinyinValidator, validate],
+  ctrl.verifyPinyin
+);
+
+// PATCH /api/user/tasks/:id/correct
+router.patch(
+  "/tasks/:id/correct",
+  [validateObjectId("id"), ...correctTranscriptValidator, validate],
+  ctrl.correctTranscript
+);
+
+// PATCH /api/user/tasks/:id/mark-erroneous
+router.patch(
+  "/tasks/:id/mark-erroneous",
+  [validateObjectId("id"), ...markErroneousValidator, validate],
+  ctrl.markErroneous
+);
+
+// POST /api/user/tasks/:id/reconsider
+router.post(
+  "/tasks/:id/reconsider",
+  [validateObjectId("id"), validate],
+  ctrl.reconsiderTask
 );
 
 module.exports = router;

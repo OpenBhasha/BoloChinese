@@ -193,25 +193,6 @@ const deleteTask = async (req, res, next) => {
   }
 };
 
-const streamTaskAudio = async (req, res, next) => {
-  try {
-    const task = await svc.getTaskById(req.params.id);
-    if (!task.audio || !task.audio.url) {
-      return errorResponse(res, "No audio found for this task.", 404);
-    }
-
-    const { getAudioStream } = require("../../../services/cloudinary.service");
-    const stream = await getAudioStream(task.audio.url);
-    
-    res.setHeader("Content-Type", task.audio.contentType || "audio/wav");
-    res.setHeader("Content-Disposition", `attachment; filename="${task.taskId}.wav"`);
-    stream.pipe(res);
-  } catch (err) {
-    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
-    next(err);
-  }
-};
-
 const getTaskSubmissions = async (req, res, next) => {
   try {
     const submissions = await svc.getTaskSubmissions(req.params.id);
@@ -274,7 +255,6 @@ module.exports = {
   getAssignedProjectIdsByUser,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
   createTask, uploadTasksExcel, getTasksByProject, getTaskById, updateTask, deleteTask,
-  streamTaskAudio,
   getTaskSubmissions,
   streamSubmissionAudio,
   deleteSubmission,

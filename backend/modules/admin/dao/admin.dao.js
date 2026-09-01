@@ -85,7 +85,6 @@ const addTasksToProject = async (projectId, taskIds) => {
 
 const getTasksByProject = async (projectId) => {
   const tasks = await Task.find({ projectId })
-    .select("-audio.data")
     .populate("assignedTo", "name email")
     .lean();
 
@@ -93,12 +92,11 @@ const getTasksByProject = async (projectId) => {
 };
 
 const getTaskById = async (id) => {
-  return Task.findById(id).select("-audio.data").populate("assignedTo", "name email");
+  return Task.findById(id).populate("assignedTo", "name email");
 };
 
 const updateTask = async (id, data) => {
   return Task.findByIdAndUpdate(id, data, { new: true, runValidators: true })
-    .select("-audio.data")
     .populate("assignedTo", "name email");
 };
 
@@ -158,25 +156,37 @@ const addAdminCommentToFlag = async (submissionId, comment, adminId) => {
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 const getDashboardStats = async () => {
-  const [totalUsers, pendingUsers, totalProjects, totalTasks, tasksByStatus] = await Promise.all([
+  const [totalUsers, pendingUsers, totalProjects, totalTasks, submissionsByStatus] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ isVerified: false }),
     Project.countDocuments(),
     Task.countDocuments(),
-    Task.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+    TaskSubmission.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
   ]);
 
   const statusMap = {};
-  tasksByStatus.forEach((s) => { statusMap[s._id] = s.count; });
+  submissionsByStatus.forEach((s) => { statusMap[s._id] = s.count; });
+  const completed = statusMap["completed"] || 0;
+  const corrected = statusMap["corrected"] || 0;
+  const erroneous = statusMap["erroneous"] || 0;
+  const requiresReview = statusMap["requires-review"] || 0;
+  const inProgress = statusMap["in-progress"] || 0;
+  const verified = statusMap["verified"] || 0;
+  const submitted = completed + corrected + erroneous + requiresReview + inProgress + verified + (statusMap["recorded"] || 0) + (statusMap["skipped"] || 0);
 
   return {
     users: { total: totalUsers, pending: pendingUsers, verified: totalUsers - pendingUsers },
     projects: { total: totalProjects },
     tasks: {
       total: totalTasks,
-      pending: statusMap["pending"] || 0,
-      inProgress: statusMap["in-progress"] || 0,
-      completed: statusMap["completed"] || 0,
+      completed,
+      corrected,
+      erroneous,
+      requiresReview,
+      // Rough site-wide indicator only: distinct tasks vs. total per-user submission
+      // records can diverge when a project has more than one assigned user. The
+      // accurate per-user breakdown lives in getPerUserProgress().
+      pending: Math.max(0, totalTasks - submitted),
     },
   };
 };

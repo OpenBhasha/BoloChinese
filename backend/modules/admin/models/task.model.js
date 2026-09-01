@@ -58,59 +58,35 @@ const taskSchema = new mongoose.Schema(
       ref: "Project",
       required: [true, "Project ID is required"],
     },
-    type: {
+    dialogueId: {
       type: String,
-      required: [true, "Task type is required"],
+      required: [true, "Dialogue ID is required"],
       trim: true,
-      maxlength: [200, "Task type must be at most 200 characters"],
+      maxlength: [200, "Dialogue ID must be at most 200 characters"],
     },
-    text: {
+    chineseTranscript: {
       type: String,
-      required: [true, "Text is required"],
+      required: [true, "Chinese transcript is required"],
       trim: true,
-      maxlength: [5000, "Text must be at most 5000 characters"],
+      maxlength: [20000, "Chinese transcript must be at most 20000 characters"],
     },
-    prompt: {
+    pinyin: {
       type: String,
-      required: [true, "Prompt is required"],
+      required: [true, "Pinyin is required"],
       trim: true,
-      maxlength: [1000, "Prompt must be at most 1000 characters"],
-    },
-    languageVariants: {
-      type: Map,
-      of: String,
-      default: {},
-    },
-    pinyinScript: {
-      type: String,
-      trim: true,
-      maxlength: [5000, "Pinyin script must be at most 5000 characters"],
-      default: "",
-    },
-    audio: {
-      provider: { type: String, default: null },
-      publicId: { type: String, default: null },
-      url: { type: String, default: null },
-      contentType: { type: String, default: "audio/wav" },
-      sampleRate: { type: Number, default: 16000 },
-      bitDepth: { type: Number, default: 16 },
-      channels: { type: Number, default: 1 },
-      uploadedAt: { type: Date, default: null },
-      fileSizeBytes: { type: Number, default: 0 },
+      maxlength: [20000, "Pinyin must be at most 20000 characters"],
     },
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },
-    status: {
-      type: String,
-      enum: ["pending", "in-progress", "completed"],
-      default: "pending",
-    },
   },
   { timestamps: true }
 );
+
+// One dialogue per project — allows the same source dataset to be split across projects.
+taskSchema.index({ projectId: 1, dialogueId: 1 }, { unique: true });
 
 // Auto-generate taskId before save
 taskSchema.pre("save", async function (next) {

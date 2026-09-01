@@ -52,25 +52,20 @@ const updateUserValidator = [
 // ─── Task Validators ──────────────────────────────────────────────────────────
 
 const createTaskValidator = [
-  body("type")
+  body("dialogueId")
     .trim()
-    .notEmpty().withMessage("Task type is required")
-    .isLength({ max: 200 }).withMessage("Task type must be at most 200 characters"),
+    .notEmpty().withMessage("Dialogue ID is required")
+    .isLength({ max: 200 }).withMessage("Dialogue ID must be at most 200 characters"),
 
-  body("text")
+  body("chineseTranscript")
     .trim()
-    .notEmpty().withMessage("Text is required")
-    .isLength({ max: 5000 }).withMessage("Text must be at most 5000 characters"),
+    .notEmpty().withMessage("Chinese transcript is required")
+    .isLength({ max: 20000 }).withMessage("Chinese transcript must be at most 20000 characters"),
 
-  body("prompt")
+  body("pinyin")
     .trim()
-    .notEmpty().withMessage("Prompt is required")
-    .isLength({ max: 1000 }).withMessage("Prompt must be at most 1000 characters"),
-
-  body("pinyinScript")
-    .optional({ checkFalsy: true })
-    .trim()
-    .isLength({ max: 5000 }).withMessage("Pinyin script must be at most 5000 characters"),
+    .notEmpty().withMessage("Pinyin is required")
+    .isLength({ max: 20000 }).withMessage("Pinyin must be at most 20000 characters"),
 
   body("assignedTo")
     .optional({ checkFalsy: true })
@@ -78,34 +73,24 @@ const createTaskValidator = [
 ];
 
 const updateTaskValidator = [
-  body("type")
+  body("dialogueId")
     .optional()
     .trim()
-    .isLength({ max: 200 }).withMessage("Task type must be at most 200 characters"),
+    .isLength({ max: 200 }).withMessage("Dialogue ID must be at most 200 characters"),
 
-  body("text")
+  body("chineseTranscript")
     .optional()
     .trim()
-    .isLength({ max: 5000 }).withMessage("Text must be at most 5000 characters"),
+    .isLength({ max: 20000 }).withMessage("Chinese transcript must be at most 20000 characters"),
 
-  body("prompt")
+  body("pinyin")
     .optional()
     .trim()
-    .isLength({ max: 1000 }).withMessage("Prompt must be at most 1000 characters"),
-
-  body("pinyinScript")
-    .optional({ checkFalsy: true })
-    .trim()
-    .isLength({ max: 5000 }).withMessage("Pinyin script must be at most 5000 characters"),
+    .isLength({ max: 20000 }).withMessage("Pinyin must be at most 20000 characters"),
 
   body("assignedTo")
     .optional({ checkFalsy: true })
     .isMongoId().withMessage("assignedTo must be a valid user ID"),
-
-  body("status")
-    .optional()
-    .isIn(["pending", "in-progress", "completed"])
-    .withMessage("Status must be 'pending', 'in-progress', or 'completed'"),
 ];
 
 module.exports = {
