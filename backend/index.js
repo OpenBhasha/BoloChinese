@@ -3,11 +3,15 @@ const createApp = require("./startup/app");
 const connectDB = require("./database/connection");
 const config = require("./properties/config");
 const logger = require("./logging/logger");
+const { seedFirstAdminOnStartup } = require("./startup/seedAdmin");
 
 const startServer = async () => {
   try {
     // Connect to MongoDB first
     await connectDB();
+
+    // Bootstrap the first admin from ADMIN_EMAIL / ADMIN_PASSWORD (idempotent)
+    await seedFirstAdminOnStartup();
 
     const app = createApp();
 
