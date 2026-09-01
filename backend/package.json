@@ -1,7 +1,7 @@
 {
-  "name": "boloeasy-backend",
+  "name": "bolochinese-backend",
   "version": "1.0.0",
-  "description": "BoloEasy Audio Recording Backend API",
+  "description": "BoloChinese Transcript Verification & Audio Recording Backend API",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

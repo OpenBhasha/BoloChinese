@@ -6,7 +6,7 @@ const User = require("./modules/register/models/user.model");
 
 const ADMIN = {
   name: "Super Admin",
-  email: "admin@boloeasy.com",
+  email: "admin@bolochinese.com",
   role: "admin",
   password: "Admin@123",   // ← change after first login
   isVerified: true,

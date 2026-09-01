@@ -13,7 +13,7 @@ const startServer = async () => {
 
     app.listen(config.port, () => {
       logger.info(`====================================================`);
-      logger.info(`  BoloEasy API Server`);
+      logger.info(`  BoloChinese API Server`);
       logger.info(`  ENV   : ${config.nodeEnv}`);
       logger.info(`  PORT  : ${config.port}`);
       logger.info(`  BASE  : http://localhost:${config.port}/api`);

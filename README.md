@@ -1,14 +1,14 @@
-# BoloEasy
+# BoloChinese
 
-BoloEasy is a full-stack audio task management platform.
+BoloChinese is a full-stack platform for verifying Chinese transcripts and their Pinyin, correcting them where needed, and collecting matching audio recordings from individual users.
 
-- Admin users can create projects and tasks, upload tasks in bulk, verify users, and review submissions.
-- Regular users can view assigned work and upload audio recordings for tasks.
+- Admin users can create projects, bulk-import dialogue transcripts, verify users, and review submissions (including corrected and erroneous items).
+- Regular users work through their assigned dialogues: verify the Pinyin against the Chinese transcript, correct it when needed (or mark it erroneous/invalid), and record matching audio.
 
 ## Monorepo Structure
 
 ```text
-BoloEasy/
+BoloChinese/
   backend/   Express API + MongoDB
   frontend/  React (Vite) application
 ```
@@ -41,11 +41,11 @@ BoloEasy/
 
 ### 1) Backend environment file
 
-Create `backend/.env`:
+Copy `backend/.env.example` to `backend/.env` and fill in your values:
 
 ```env
 PORT=5000
-MONGO_URI=mongodb://localhost:27017/boloeasy
+MONGO_URI=mongodb://localhost:27017/bolochinese
 JWT_SECRET=replace_with_a_strong_secret
 JWT_EXPIRES_IN=7d
 NODE_ENV=development
@@ -57,7 +57,7 @@ CLOUDINARY_API_SECRET=your_api_secret
 
 ### 2) Frontend environment file
 
-Create `frontend/.env`:
+Copy `frontend/.env.example` to `frontend/.env`:
 
 ```env
 VITE_API_BASE_URL=http://localhost:5000/api
@@ -104,7 +104,7 @@ npm run seed
 ```
 
 Default seeded admin:
-- Email: admin@boloeasy.com
+- Email: admin@bolochinese.com
 - Password: Admin@123
 
 Change the password after first login.
