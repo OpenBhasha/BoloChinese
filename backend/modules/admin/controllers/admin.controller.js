@@ -1,0 +1,282 @@
+const svc = require("../services/admin.service");
+const { successResponse, errorResponse, notFoundResponse } = require("../../../responses/apiResponse");
+const logger = require("../../../logging/logger");
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+const getDashboard = async (req, res, next) => {
+  try {
+    const stats = await svc.getDashboard();
+    return successResponse(res, "Dashboard stats retrieved.", stats);
+  } catch (err) { next(err); }
+};
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+const getAllUsers = async (req, res, next) => {
+  try {
+    const users = await svc.getAllUsers();
+    return successResponse(res, "Users retrieved.", users);
+  } catch (err) { next(err); }
+};
+
+const getPendingUsers = async (req, res, next) => {
+  try {
+    const users = await svc.getPendingUsers();
+    return successResponse(res, "Pending users retrieved.", users);
+  } catch (err) { next(err); }
+};
+
+const verifyUser = async (req, res, next) => {
+  try {
+    logger.info(`Admin ${req.user.id} verifying user ${req.params.id}`);
+    const user = await svc.verifyUser(req.params.id);
+    return successResponse(res, "User verified successfully.", user);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const updateUser = async (req, res, next) => {
+  try {
+    logger.info(`Admin ${req.user.id} updating user ${req.params.id}`);
+    const user = await svc.updateUser(req.params.id, req.body);
+    return successResponse(res, "User updated successfully.", user);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const assignProjectToUser = async (req, res, next) => {
+  try {
+    logger.info(`Admin ${req.user.id} assigning project ${req.params.projectId} to user ${req.params.userId}`);
+    const result = await svc.assignProjectToUser(req.params.projectId, req.params.userId, req.user.id);
+    return successResponse(res, "Project assigned successfully.", result);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const unassignProjectFromUser = async (req, res, next) => {
+  try {
+    logger.info(`Admin ${req.user.id} unassigning project ${req.params.projectId} from user ${req.params.userId}`);
+    const result = await svc.unassignProjectFromUser(req.params.projectId, req.params.userId, req.user.id);
+    return successResponse(res, "Project unassigned successfully.", result);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const getAssignedProjectIdsByUser = async (req, res, next) => {
+  try {
+    const assignedProjectIds = await svc.getAssignedProjectIdsByUser(req.params.userId);
+    return successResponse(res, "Assigned projects retrieved.", assignedProjectIds);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+const createProject = async (req, res, next) => {
+  try {
+    const project = await svc.createProject({ ...req.body, adminId: req.user.id });
+    return successResponse(res, "Project created.", project, 201);
+  } catch (err) { next(err); }
+};
+
+const getAllProjects = async (req, res, next) => {
+  try {
+    const projects = await svc.getAllProjects();
+    return successResponse(res, "Projects retrieved.", projects);
+  } catch (err) { next(err); }
+};
+
+const getProjectById = async (req, res, next) => {
+  try {
+    const project = await svc.getProjectById(req.params.id);
+    return successResponse(res, "Project retrieved.", project);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const updateProject = async (req, res, next) => {
+  try {
+    const project = await svc.updateProject(req.params.id, req.body);
+    return successResponse(res, "Project updated.", project);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const deleteProject = async (req, res, next) => {
+  try {
+    await svc.deleteProject(req.params.id);
+    return successResponse(res, "Project deleted successfully.", null);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+// ─── Tasks ────────────────────────────────────────────────────────────────────
+const createTask = async (req, res, next) => {
+  try {
+    const task = await svc.createTask({ projectId: req.params.projectId, ...req.body });
+    return successResponse(res, "Task created.", task, 201);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const uploadTasksExcel = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return errorResponse(res, "Excel file is required. Upload .xlsx or .xls.", 400);
+    }
+
+    const result = await svc.createTasksFromExcel(req.params.projectId, req.file.buffer);
+    const message = result.failedCount
+      ? `Uploaded with partial success. Created ${result.createdCount} of ${result.totalRows} tasks.`
+      : `Successfully created ${result.createdCount} tasks.`;
+
+    return successResponse(res, message, result, 201);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const getTasksByProject = async (req, res, next) => {
+  try {
+    const tasks = await svc.getTasksByProject(req.params.projectId);
+    return successResponse(res, "Tasks retrieved.", tasks);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const getTaskById = async (req, res, next) => {
+  try {
+    const task = await svc.getTaskById(req.params.id);
+    return successResponse(res, "Task retrieved.", task);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const updateTask = async (req, res, next) => {
+  try {
+    const task = await svc.updateTask(req.params.id, req.body);
+    return successResponse(res, "Task updated.", task);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const deleteTask = async (req, res, next) => {
+  try {
+    await svc.deleteTask(req.params.id);
+    return successResponse(res, "Task deleted successfully.", null);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const streamTaskAudio = async (req, res, next) => {
+  try {
+    const task = await svc.getTaskById(req.params.id);
+    if (!task.audio || !task.audio.url) {
+      return errorResponse(res, "No audio found for this task.", 404);
+    }
+
+    const { getAudioStream } = require("../../../services/cloudinary.service");
+    const stream = await getAudioStream(task.audio.url);
+    
+    res.setHeader("Content-Type", task.audio.contentType || "audio/wav");
+    res.setHeader("Content-Disposition", `attachment; filename="${task.taskId}.wav"`);
+    stream.pipe(res);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const getTaskSubmissions = async (req, res, next) => {
+  try {
+    const submissions = await svc.getTaskSubmissions(req.params.id);
+    return successResponse(res, "Task submissions retrieved.", submissions);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const streamSubmissionAudio = async (req, res, next) => {
+  try {
+    const submission = await svc.getTaskSubmissionById(req.params.id);
+    if (!submission.audio || !submission.audio.url) {
+      return errorResponse(res, "No audio found for this submission.", 404);
+    }
+
+    const { getAudioStream } = require("../../../services/cloudinary.service");
+    const stream = await getAudioStream(submission.audio.url);
+
+    res.setHeader("Content-Type", submission.audio.contentType || "audio/wav");
+    res.setHeader("Content-Disposition", `attachment; filename="submission-${submission._id}.wav"`);
+    stream.pipe(res);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const deleteSubmission = async (req, res, next) => {
+  try {
+    await svc.deleteTaskSubmission(req.params.id);
+    return successResponse(res, "Submission deleted successfully.", null);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const addAdminCommentToFlag = async (req, res, next) => {
+  try {
+    const adminComment = String(req.body?.adminComment || "").trim();
+    if (!adminComment) {
+      return errorResponse(res, "Admin comment is required.", 400);
+    }
+
+    const submission = await svc.addAdminCommentToFlag(req.params.id, adminComment, req.user.id);
+    return successResponse(res, "Admin comment added.", submission);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+module.exports = {
+  getDashboard,
+  getAllUsers, getPendingUsers, verifyUser, updateUser,
+  assignProjectToUser,
+  unassignProjectFromUser,
+  getAssignedProjectIdsByUser,
+  createProject, getAllProjects, getProjectById, updateProject, deleteProject,
+  createTask, uploadTasksExcel, getTasksByProject, getTaskById, updateTask, deleteTask,
+  streamTaskAudio,
+  getTaskSubmissions,
+  streamSubmissionAudio,
+  deleteSubmission,
+  addAdminCommentToFlag,
+};

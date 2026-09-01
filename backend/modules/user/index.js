@@ -1,0 +1,49 @@
+const express = require("express");
+const router = express.Router();
+const ctrl = require("./controllers/user.controller");
+const { authenticate, requireRole } = require("../../middlewares/auth");
+const validate = require("../../middlewares/validate");
+const { validateObjectId } = require("../../validators/common.validator");
+const { updatePinyinScriptValidator } = require("./validators/user.validator");
+const audioUpload = require("./services/audioUpload.service");
+
+// All user routes require authentication + user role
+router.use(authenticate, requireRole("user"));
+
+// GET /api/user/tasks
+router.get("/tasks", ctrl.getMyTasks);
+
+// GET /api/user/projects
+router.get("/projects", ctrl.getMyProjects);
+
+// GET /api/user/projects/:id/tasks
+router.get("/projects/:id/tasks", [validateObjectId("id"), validate], ctrl.getProjectTasks);
+
+// GET /api/user/tasks/:id
+router.get("/tasks/:id", [validateObjectId("id"), validate], ctrl.getTaskDetail);
+
+// POST /api/user/tasks/:id/audio  (multipart/form-data, field name: "audio")
+router.post(
+  "/tasks/:id/audio",
+  [validateObjectId("id"), validate],
+  audioUpload.single("audio"),
+  ctrl.uploadAudio
+);
+
+// GET /api/user/tasks/:id/audio  — stream audio directly from Cloudinary
+router.get("/tasks/:id/audio", [validateObjectId("id"), validate], ctrl.streamAudio);
+
+// POST /api/user/tasks/:id/skip
+router.post("/tasks/:id/skip", [validateObjectId("id"), validate], ctrl.skipTask);
+
+// POST /api/user/tasks/:id/flag
+router.post("/tasks/:id/flag", [validateObjectId("id"), validate], ctrl.flagTaskIssue);
+
+// PATCH /api/user/tasks/:id/pinyin-script
+router.patch(
+  "/tasks/:id/pinyin-script",
+  [validateObjectId("id"), ...updatePinyinScriptValidator, validate],
+  ctrl.updatePinyinScript
+);
+
+module.exports = router;
