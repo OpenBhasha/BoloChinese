@@ -96,6 +96,9 @@
   .badge-user {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600;
   }
+  .badge-danger {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700;
+  }
 
   .recording-wave {
     display: inline-flex;

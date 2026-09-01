@@ -4,18 +4,11 @@ import UserLayout from "../../components/layout/UserLayout";
 import { getTaskDetail, getProjectTasks, flagTaskIssue } from "../../api/user.api";
 import Modal from "../../components/ui/Modal";
 import AudioRecorder from "../../components/task/AudioRecorder";
-import TextToReadCard from "../../components/task/TextToReadCard";
-import ChineseReadCard from "../../components/task/ChineseReadCard";
+import TranscriptVerification from "../../components/task/TranscriptVerification";
+import StatusBadge from "../../utils/statusBadge";
 import { ChevronLeft, CheckCircle2, Flag } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
-
-const statusBadge = (s) => {
-  if (s === "completed") return <span className="badge-done">Completed</span>;
-  if (s === "skipped") return <span className="badge-pending">Skipped</span>;
-  if (s === "in-progress") return <span className="badge-progress">In Progress</span>;
-  return <span className="badge-pending">Pending</span>;
-};
 
 export default function TaskDetail() {
   const { id } = useParams();
@@ -108,13 +101,11 @@ export default function TaskDetail() {
   );
   const prevTask = currentTaskIndex > 0 ? projectTasks[currentTaskIndex - 1] : null;
   const nextTask = currentTaskIndex >= 0 ? projectTasks[currentTaskIndex + 1] : null;
-  const completedCount = projectTasks.filter((t) => t.status === "completed").length;
+  const completedCount = projectTasks.filter((t) => t.status === "completed" || t.status === "erroneous").length;
   const progressPercent = projectTasks.length ? Math.round((completedCount / projectTasks.length) * 100) : 0;
 
   if (loading) return <UserLayout><PageSpinner /></UserLayout>;
   if (!task) return <UserLayout><p className="text-slate-400">Task not found.</p></UserLayout>;
-
-  const isChineseRead = task.type === "Chinese Read";
 
   return (
     <UserLayout>
@@ -137,9 +128,9 @@ export default function TaskDetail() {
             <span className="font-mono text-sm text-primary-400 bg-primary-500/10 px-2.5 py-0.5 rounded">
               {task.taskId}
             </span>
-            {statusBadge(task.status)}
+            <StatusBadge status={task.status} />
           </div>
-          <h1 className="text-xl font-bold text-white">{task.type}</h1>
+          <h1 className="text-xl font-bold text-white">{task.dialogueId}</h1>
         </div>
       </div>
 
@@ -169,21 +160,11 @@ export default function TaskDetail() {
             </button>
           </div>
 
-          {/* Prompt */}
-          <div className="card">
-            <p className="label mb-2">Prompt</p>
-            <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap break-all">{task.prompt}</p>
-          </div>
-
-          {isChineseRead ? (
-            <ChineseReadCard
-              key={task._id}
-              task={task}
-              onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
-            />
-          ) : (
-            <TextToReadCard key={task._id} task={task} />
-          )}
+          <TranscriptVerification
+            key={task._id}
+            task={task}
+            onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
+          />
 
           {/* Audio status */}
           {(task.audio?.publicId || task.audio?.url) && (

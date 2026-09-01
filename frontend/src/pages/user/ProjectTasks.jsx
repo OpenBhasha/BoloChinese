@@ -5,12 +5,7 @@ import toast from "react-hot-toast";
 import UserLayout from "../../components/layout/UserLayout";
 import { getProjectTasks } from "../../api/user.api";
 import { PageSpinner } from "../../components/ui/Spinner";
-
-const statusBadge = (s) => {
-  if (s === "completed") return <span className="badge-done">Completed</span>;
-  if (s === "in-progress") return <span className="badge-progress">In Progress</span>;
-  return <span className="badge-pending">Pending</span>;
-};
+import StatusBadge from "../../utils/statusBadge";
 
 export default function ProjectTasks() {
   const { id } = useParams();
@@ -64,11 +59,11 @@ export default function ProjectTasks() {
                 <span className="font-mono text-xs text-black/70 bg-black/5 px-2 py-0.5 rounded">
                   {t.taskId}
                 </span>
-                {statusBadge(t.status)}
+                <StatusBadge status={t.status} />
               </div>
 
-              <p className="text-base font-semibold text-black mb-1 line-clamp-1">{t.type}</p>
-              <p className="text-sm text-black/80 mb-3 line-clamp-2">{t.text}</p>
+              <p className="text-base font-semibold text-black mb-1 line-clamp-1">{t.dialogueId}</p>
+              <p className="text-sm text-black/80 mb-3 line-clamp-2">{t.correctedChineseTranscript || t.chineseTranscript}</p>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-black/75">
