@@ -21,8 +21,7 @@ import { Plus, Trash2, Pencil, ChevronLeft, Mic2, FileAudio, FileText, User2, Ca
 import { PageSpinner, Spinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
 
-const TASK_TYPES = ["NE Read", "NE Variance", "NE Sentence", "Chinese Read"];
-const EMPTY_TASK = { type: TASK_TYPES[0], text: "", prompt: "", pinyinScript: "", assignedTo: "" };
+const EMPTY_TASK = { dialogueId: "", chineseTranscript: "", pinyin: "", assignedTo: "" };
 const ADMIN_PROJECT_VIEWS = {
   TASKS: "tasks",
   SUBMISSIONS: "submissions",
@@ -266,7 +265,7 @@ export default function ProjectDetail() {
 
   const openCreate = () => { setForm(EMPTY_TASK); setEditing(null); setModal("form"); };
   const openEdit = (t) => {
-    setForm({ type: t.type, text: t.text, prompt: t.prompt, pinyinScript: t.pinyinScript || "", assignedTo: t.assignedTo?._id || "" });
+    setForm({ dialogueId: t.dialogueId, chineseTranscript: t.chineseTranscript, pinyin: t.pinyin, assignedTo: t.assignedTo?._id || "" });
     setEditing(t); setModal("form");
   };
 
@@ -364,7 +363,7 @@ export default function ProjectDetail() {
     return submissionRows.filter(({ task, submission }) => {
       const values = [
         task.taskId,
-        task.type,
+        task.dialogueId,
         submission.userId?.name,
         submission.userId?.email,
         submission.status,
@@ -378,7 +377,7 @@ export default function ProjectDetail() {
     return flaggedRows.filter(({ task, submission }) => {
       const values = [
         task.taskId,
-        task.type,
+        task.dialogueId,
         submission.userId?.name,
         submission.userId?.email,
         submission.reportedIssue?.note,
@@ -702,9 +701,8 @@ export default function ProjectDetail() {
                           Details
                         </button>
                       </div>
-                      <p className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-2 py-0.5 rounded w-fit">{t.type}</p>
-                      <p className="text-xs text-black/80 line-clamp-2">{t.text}</p>
-                      <p className="text-xs text-black/65 truncate">{t.prompt}</p>
+                      <p className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-2 py-0.5 rounded w-fit">{t.dialogueId}</p>
+                      <p className="text-xs text-black/80 line-clamp-2">{t.chineseTranscript}</p>
                       <div className="flex justify-end gap-1 shrink-0">
                         <button
                           type="button"
@@ -743,7 +741,7 @@ export default function ProjectDetail() {
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-mono text-xs text-primary-700 bg-primary-100 px-2 py-0.5 rounded truncate">{rowTask.taskId}</span>
                         </div>
-                        <p className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-2 py-0.5 rounded w-fit">{rowTask.type}</p>
+                        <p className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-2 py-0.5 rounded w-fit">{rowTask.dialogueId}</p>
                         <div>
                           <p className="text-sm text-black/80">{submission.userId?.name || "Unknown user"}</p>
                           <p className="text-[11px] text-black/60">{submission.userId?.email || "no-email"}</p>
@@ -855,29 +853,25 @@ export default function ProjectDetail() {
                 <table ref={desktopTableRef} className="w-full text-sm table-fixed display">
                   <thead>
                     <tr className="border-b border-[#d2dad0] bg-primary-50/70">
-                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[12%]">Task ID</th>
-                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[15%]">Type</th>
-                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[25%]">Text</th>
-                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[20%]">Prompt</th>
-                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[10%]">Action</th>
+                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[15%]">Task ID</th>
+                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[20%]">Dialogue ID</th>
+                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[50%]">Chinese Transcript</th>
+                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[15%]">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {displayedTasks.map((t) => (
                       <tr key={t._id} className="border-b border-[#d8e0d5] hover:bg-primary-50/60 transition">
-                        <td className="px-2 py-3.5 w-[12%]">
+                        <td className="px-2 py-3.5 w-[15%]">
                           <span className="font-mono text-xs text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded block truncate">{t.taskId}</span>
                         </td>
-                        <td className="px-2 py-3.5 w-[15%]">
-                          <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{t.type}</span>
-                        </td>
-                        <td className="px-2 py-3.5 w-[25%]">
-                          <div className="text-black/80 text-xs truncate" title={t.text}>{t.text}</div>
-                        </td>
                         <td className="px-2 py-3.5 w-[20%]">
-                          <div className="text-black/65 text-xs truncate" title={t.prompt}>{t.prompt}</div>
+                          <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{t.dialogueId}</span>
                         </td>
-                        <td className="px-2 py-3.5 w-[10%]">
+                        <td className="px-2 py-3.5 w-[50%]">
+                          <div className="text-black/80 text-xs truncate" title={t.chineseTranscript}>{t.chineseTranscript}</div>
+                        </td>
+                        <td className="px-2 py-3.5 w-[15%]">
                           <div className="flex justify-end gap-1">
                             <button
                               type="button"
@@ -901,7 +895,7 @@ export default function ProjectDetail() {
                     ))}
                     {!displayedTasks.length && (
                       <tr>
-                        <td colSpan={5} className="px-4 py-12 text-center text-black/60">
+                        <td colSpan={4} className="px-4 py-12 text-center text-black/60">
                           <Mic2 size={32} className="mx-auto mb-2 opacity-30" />
                           No tasks yet. Add your first task.
                         </td>
@@ -915,7 +909,7 @@ export default function ProjectDetail() {
                   <thead>
                     <tr className="border-b border-[#d2dad0] bg-primary-50/70">
                       <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[12%]">Task ID</th>
-                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[15%]">Type</th>
+                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[15%]">Dialogue ID</th>
                       <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[25%]">User</th>
                       <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[20%]">Status</th>
                       <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[12%]">Actions</th>
@@ -940,7 +934,7 @@ export default function ProjectDetail() {
                             <span className="font-mono text-xs text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded block truncate">{rowTask.taskId}</span>
                           </td>
                           <td className="px-2 py-3.5 w-[15%]">
-                            <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{rowTask.type}</span>
+                            <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{rowTask.dialogueId}</span>
                           </td>
                           <td className="px-2 py-3.5 w-[25%]">
                             <div className="text-black/80 text-xs" title={submission.userId?.email}>
@@ -1101,28 +1095,20 @@ export default function ProjectDetail() {
         <Modal title={editing ? "Edit Task" : "Create Task"} onClose={() => setModal(null)} size="lg">
           <form onSubmit={handleSave} className="space-y-4">
             <div>
-              <label className="label">Type *</label>
-              <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))} className="input">
-                {TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
+              <label className="label">Dialogue ID *</label>
+              <input value={form.dialogueId} onChange={(e) => setForm((f) => ({ ...f, dialogueId: e.target.value }))}
+                className="input" placeholder="e.g. cat03_000000" required />
             </div>
             <div>
-              <label className="label">Text * <span className="normal-case text-slate-500">(what the user reads)</span></label>
-              <textarea value={form.text} onChange={(e) => setForm((f) => ({ ...f, text: e.target.value }))}
-                className="input resize-none" rows={4} placeholder="Enter the text to be read…" required />
+              <label className="label">Chinese Transcript *</label>
+              <textarea value={form.chineseTranscript} onChange={(e) => setForm((f) => ({ ...f, chineseTranscript: e.target.value }))}
+                className="input resize-none" rows={6} placeholder="Enter the Chinese transcript…" required />
             </div>
             <div>
-              <label className="label">Prompt * <span className="normal-case text-slate-500">(instruction for user)</span></label>
-              <input value={form.prompt} onChange={(e) => setForm((f) => ({ ...f, prompt: e.target.value }))}
-                className="input" placeholder="e.g. Read the sentence below clearly" required />
+              <label className="label">Pinyin * <span className="normal-case text-slate-500">(correctable by the assigned user)</span></label>
+              <textarea value={form.pinyin} onChange={(e) => setForm((f) => ({ ...f, pinyin: e.target.value }))}
+                className="input resize-none" rows={6} placeholder="Enter the pinyin transliteration…" required />
             </div>
-            {form.type === "Chinese Read" && (
-              <div>
-                <label className="label">Pinyin Script <span className="normal-case text-slate-500">(editable by the assigned user)</span></label>
-                <textarea value={form.pinyinScript} onChange={(e) => setForm((f) => ({ ...f, pinyinScript: e.target.value }))}
-                  className="input resize-none" rows={4} placeholder="Enter the initial pinyin transliteration…" />
-              </div>
-            )}
            {/* <div>
               <label className="label">Assign To <span className="normal-case text-slate-500">(optional)</span></label>
               <select value={form.assignedTo} onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))} className="input">
@@ -1170,8 +1156,8 @@ export default function ProjectDetail() {
                       <p className="text-black mt-1 font-mono">{selectedTask.taskId}</p>
                     </div>
                     <div>
-                      <p className="text-black/55 text-xs uppercase tracking-wide">Type</p>
-                      <p className="text-black/80 mt-1">{selectedTask.type}</p>
+                      <p className="text-black/55 text-xs uppercase tracking-wide">Dialogue ID</p>
+                      <p className="text-black/80 mt-1">{selectedTask.dialogueId}</p>
                     </div>
                  
                   </div>
@@ -1251,20 +1237,24 @@ export default function ProjectDetail() {
               )}
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-[#c7d1c3] bg-[#eef2ec] p-4">
+                <div className="rounded-2xl border border-[#c7d1c3] bg-[#eef2ec] p-4 min-w-0">
                   <div className="flex items-center gap-2 mb-3 text-black/80">
                     <FileText size={16} className="text-primary-400" />
-                    <p className="label m-0">Prompt</p>
+                    <p className="label m-0">Chinese Script</p>
                   </div>
-                  <p className="text-black/80 whitespace-pre-wrap break-all text-sm leading-relaxed">{selectedTask.prompt || "No prompt provided."}</p>
+                  <p className="text-black whitespace-pre-wrap break-all text-sm leading-relaxed">
+                    {selectedSubmission?.correctedChineseTranscript || selectedTask.chineseTranscript || "No transcript provided."}
+                  </p>
                 </div>
 
                 <div className="rounded-2xl border border-[#c7d1c3] bg-[#e6eee2] p-4 min-w-0">
                   <div className="flex items-center gap-2 mb-3 text-black/80">
                     <FileText size={16} className="text-primary-400" />
-                    <p className="label m-0">Text To Read</p>
+                    <p className="label m-0">Pinyin</p>
                   </div>
-                  <p className="text-black whitespace-pre-wrap break-all text-sm leading-relaxed">{selectedTask.text || "No text provided."}</p>
+                  <p className="text-black whitespace-pre-wrap break-all text-sm leading-relaxed">
+                    {selectedSubmission?.correctedPinyin || selectedTask.pinyin || "No pinyin provided."}
+                  </p>
                 </div>
               </div>
 
