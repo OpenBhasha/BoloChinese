@@ -4,7 +4,7 @@ const ctrl = require("./controllers/admin.controller");
 const { authenticate, requireRole } = require("../../middlewares/auth");
 const validate = require("../../middlewares/validate");
 const { validateObjectId } = require("../../validators/common.validator");
-const excelUpload = require("./services/taskExcelUpload.service");
+const taskImportUpload = require("./services/taskImport.service");
 const {
   createProjectValidator,
   updateProjectValidator,
@@ -54,8 +54,8 @@ router.post("/projects/:projectId/tasks", [validateObjectId("projectId"), ...cre
 router.post(
   "/projects/:projectId/tasks/upload",
   [validateObjectId("projectId"), validate],
-  excelUpload.single("file"),
-  ctrl.uploadTasksExcel
+  taskImportUpload.single("file"),
+  ctrl.uploadTasksImport
 );
 router.get("/projects/:projectId/tasks", [validateObjectId("projectId"), validate], ctrl.getTasksByProject);
 router.get("/tasks/:id", [validateObjectId("id"), validate], ctrl.getTaskById);

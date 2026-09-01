@@ -13,7 +13,7 @@ import {
   getTaskSubmissions,
   streamSubmissionAudio,
   deleteSubmission,
-  uploadTasksExcel,
+  uploadTasksImport,
   downloadTaskTemplate,
   addAdminCommentToFlag,
 } from "../../api/admin.api";
@@ -520,7 +520,7 @@ export default function ProjectDetail() {
 
     setBulkUploading(true);
     try {
-      const response = await uploadTasksExcel(id, selectedFile);
+      const response = await uploadTasksImport(id, selectedFile);
       const result = response.data?.data;
       const message = response.data?.message || "Tasks imported.";
       toast.success(message);
@@ -538,7 +538,7 @@ export default function ProjectDetail() {
       if (errs?.length) {
         errs.forEach((e) => toast.error(e.message));
       } else {
-        toast.error(err.response?.data?.message || "Excel upload failed");
+        toast.error(err.response?.data?.message || "Import failed");
       }
     } finally {
       setBulkUploading(false);
@@ -644,7 +644,7 @@ export default function ProjectDetail() {
               <input
                 ref={excelInputRef}
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 className="hidden"
                 onChange={handleExcelSelection}
               />
@@ -652,9 +652,9 @@ export default function ProjectDetail() {
                 onClick={() => excelInputRef.current?.click()}
                 className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
                 disabled={bulkUploading}
-                title="Upload Excel with Task Name, Text, language columns (English/Telugu/Hindi...), prompt optional"
+                title="Upload an Excel or CSV file with dialogue_id, chinese_transcript, and pinyin columns"
               >
-                <Upload size={16} /> {bulkUploading ? "Uploading..." : "Upload Excel"}
+                <Upload size={16} /> {bulkUploading ? "Uploading..." : "Upload Dialogues"}
               </button>
               <button
                 onClick={handleDownloadTemplate}

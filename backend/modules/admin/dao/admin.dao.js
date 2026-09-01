@@ -83,6 +83,38 @@ const addTasksToProject = async (projectId, taskIds) => {
   return Project.findByIdAndUpdate(projectId, { $push: { tasks: { $each: taskIds } } }, { new: true });
 };
 
+const getExistingDialogueIds = async (projectId, dialogueIds) => {
+  const existing = await Task.find({ projectId, dialogueId: { $in: dialogueIds } }).select("dialogueId").lean();
+  return existing.map((t) => t.dialogueId);
+};
+
+// Bulk-insert pre-validated task docs (each { projectId, dialogueId, chineseTranscript, pinyin }),
+// reserving a taskId block up front since insertMany() skips the pre("save") hook.
+// Uses ordered:false so one bad doc doesn't abort the rest of the batch.
+const bulkCreateTasks = async (docs) => {
+  if (!docs.length) return { insertedCount: 0, insertedIds: [], writeErrors: [] };
+
+  const taskIds = await Task.reserveTaskIdBatch(docs.length);
+  const docsWithIds = docs.map((doc, i) => ({ ...doc, taskId: taskIds[i] }));
+
+  try {
+    const inserted = await Task.insertMany(docsWithIds, { ordered: false });
+    return { insertedCount: inserted.length, insertedIds: inserted.map((d) => d._id), writeErrors: [] };
+  } catch (err) {
+    if (err.insertedDocs) {
+      return {
+        insertedCount: err.insertedDocs.length,
+        insertedIds: err.insertedDocs.map((d) => d._id),
+        writeErrors: (err.writeErrors || []).map((we) => ({
+          index: we.index,
+          message: we.errmsg || we.err?.errmsg || "Insert failed.",
+        })),
+      };
+    }
+    throw err;
+  }
+};
+
 const getTasksByProject = async (projectId) => {
   const tasks = await Task.find({ projectId })
     .populate("assignedTo", "name email")
@@ -261,6 +293,7 @@ module.exports = {
   getUserById, getUserByEmail,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
   createTask, addTaskToProject, addTasksToProject, getTasksByProject, getTaskById, updateTask, deleteTask, removeTaskFromProject,
+  getExistingDialogueIds, bulkCreateTasks,
   assignProjectToUser,
   unassignProjectFromUser,
   getAssignedProjectIdsByUser,

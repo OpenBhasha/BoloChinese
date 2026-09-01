@@ -1,3 +1,4 @@
+const path = require("path");
 const svc = require("../services/admin.service");
 const { successResponse, errorResponse, notFoundResponse } = require("../../../responses/apiResponse");
 const logger = require("../../../logging/logger");
@@ -152,13 +153,14 @@ const createTask = async (req, res, next) => {
   }
 };
 
-const uploadTasksExcel = async (req, res, next) => {
+const uploadTasksImport = async (req, res, next) => {
   try {
     if (!req.file) {
-      return errorResponse(res, "Excel file is required. Upload .xlsx or .xls.", 400);
+      return errorResponse(res, "A file is required. Upload .xlsx, .xls, or .csv.", 400);
     }
 
-    const result = await svc.createTasksFromExcel(req.params.projectId, req.file.buffer);
+    const fileExtension = path.extname(req.file.originalname || "").toLowerCase();
+    const result = await svc.createTasksFromImport(req.params.projectId, req.file.buffer, fileExtension);
     const message = result.failedCount
       ? `Uploaded with partial success. Created ${result.createdCount} of ${result.totalRows} tasks.`
       : `Successfully created ${result.createdCount} tasks.`;
@@ -273,7 +275,7 @@ module.exports = {
   unassignProjectFromUser,
   getAssignedProjectIdsByUser,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
-  createTask, uploadTasksExcel, getTasksByProject, getTaskById, updateTask, deleteTask,
+  createTask, uploadTasksImport, getTasksByProject, getTaskById, updateTask, deleteTask,
   getTaskSubmissions,
   streamSubmissionAudio,
   deleteSubmission,

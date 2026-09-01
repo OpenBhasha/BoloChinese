@@ -97,4 +97,24 @@ taskSchema.pre("save", async function (next) {
   next();
 });
 
+// insertMany() does not run the "save" middleware above, so bulk-import callers
+// must reserve their own taskId block up front and assign it to each doc.
+taskSchema.statics.reserveTaskIdBatch = async function (count) {
+  await ensureTaskCounterSeeded();
+
+  const counter = await Counter.findOneAndUpdate(
+    { _id: "taskId" },
+    { $inc: { seq: count } },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+
+  const endSeq = counter.seq;
+  const startSeq = endSeq - count + 1;
+  const ids = [];
+  for (let seq = startSeq; seq <= endSeq; seq += 1) {
+    ids.push(`TASK-${String(seq).padStart(4, "0")}`);
+  }
+  return ids;
+};
+
 module.exports = mongoose.model("Task", taskSchema);

@@ -25,7 +25,7 @@ export const deleteProject = (id) => api.delete(`/admin/projects/${id}`);
 
 // Tasks
 export const createTask = (projectId, data) => api.post(`/admin/projects/${projectId}/tasks`, data);
-export const uploadTasksExcel = (projectId, file) => {
+export const uploadTasksImport = (projectId, file) => {
 	const formData = new FormData();
 	formData.append("file", file);
 	return api.post(`/admin/projects/${projectId}/tasks/upload`, formData, {

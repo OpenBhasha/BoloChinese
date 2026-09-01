@@ -1,6 +1,7 @@
 const dao = require("../dao/admin.dao");
 const logger = require("../../../logging/logger");
 const xlsx = require("xlsx");
+const { parse: parseCsv } = require("csv-parse/sync");
 
 const normalizeHeader = (value = "") => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
 
@@ -8,51 +9,6 @@ const getCellValue = (row, aliases) => {
   const rowKeys = Object.keys(row || {});
   const matchedKey = rowKeys.find((key) => aliases.includes(normalizeHeader(key)));
   return matchedKey ? row[matchedKey] : undefined;
-};
-
-const DEFAULT_PROMPT = "Read the text clearly";
-
-const NON_LANGUAGE_HEADERS = new Set([
-  "sno",
-  "s.no",
-  "serialno",
-  "serialnumber",
-  "typeno",
-  "typenumber",
-  "taskno",
-  "tasknumber",
-  "taskid",
-  "type",
-  "tasktype",
-  "taskname",
-  "task",
-  "text",
-  "tasktext",
-  "content",
-  "prompt",
-  "instruction",
-  "instructions",
-  "assignedto",
-  "assignedtoid",
-  "assignedtoemail",
-  "assignee",
-  "assigneeemail",
-]);
-
-const getLanguageVariantsFromRow = (row = {}) => {
-  const variants = {};
-
-  Object.keys(row).forEach((key) => {
-    const normalized = normalizeHeader(key);
-    if (!normalized || NON_LANGUAGE_HEADERS.has(normalized)) return;
-
-    const value = toText(row[key]);
-    if (!value) return;
-
-    variants[String(key).trim()] = value;
-  });
-
-  return variants;
 };
 
 const toText = (value) => {
@@ -389,14 +345,12 @@ const deleteTask = async (id) => {
   return task;
 };
 
-const createTasksFromExcel = async (projectId, fileBuffer) => {
-  const project = await dao.getProjectById(projectId);
-  if (!project) {
-    const err = new Error("Project not found.");
-    err.statusCode = 404;
-    throw err;
-  }
+const IMPORT_ROW_LIMIT = 25000;
+const DIALOGUE_ID_ALIASES = ["dialogueid", "dialogue_id", "id"];
+const CHINESE_TRANSCRIPT_ALIASES = ["chinesetranscript", "chinese_transcript", "transcript", "chinese"];
+const PINYIN_ALIASES = ["pinyin"];
 
+const parseXlsxRows = (fileBuffer) => {
   let workbook;
   try {
     workbook = xlsx.read(fileBuffer, { type: "buffer" });
@@ -414,7 +368,28 @@ const createTasksFromExcel = async (projectId, fileBuffer) => {
   }
 
   const sheet = workbook.Sheets[firstSheetName];
-  const rows = xlsx.utils.sheet_to_json(sheet, { defval: "", raw: false });
+  return xlsx.utils.sheet_to_json(sheet, { defval: "", raw: false });
+};
+
+const parseCsvRows = (fileBuffer) => {
+  try {
+    return parseCsv(fileBuffer, { columns: true, skip_empty_lines: true, bom: true });
+  } catch {
+    const err = new Error("Invalid CSV file. Please check the file formatting.");
+    err.statusCode = 400;
+    throw err;
+  }
+};
+
+const createTasksFromImport = async (projectId, fileBuffer, fileExtension) => {
+  const project = await dao.getProjectById(projectId);
+  if (!project) {
+    const err = new Error("Project not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const rows = fileExtension === ".csv" ? parseCsvRows(fileBuffer) : parseXlsxRows(fileBuffer);
 
   if (!rows.length) {
     const err = new Error("No rows found in the uploaded file.");
@@ -422,79 +397,68 @@ const createTasksFromExcel = async (projectId, fileBuffer) => {
     throw err;
   }
 
-  if (rows.length > 500) {
-    const err = new Error("Maximum 500 tasks can be uploaded at once.");
+  if (rows.length > IMPORT_ROW_LIMIT) {
+    const err = new Error(`Maximum ${IMPORT_ROW_LIMIT} tasks can be uploaded at once.`);
     err.statusCode = 400;
     throw err;
   }
 
   const rowErrors = [];
-  const createdTasks = [];
-  const createdTaskIds = [];
+  const validDocs = []; // { rowNumber, doc: { projectId, dialogueId, chineseTranscript, pinyin } }
+  const seenDialogueIds = new Set();
 
-  for (let index = 0; index < rows.length; index += 1) {
-    const row = rows[index];
-    const excelRowNumber = index + 2;
+  rows.forEach((row, index) => {
+    const rowNumber = index + 2; // header is row 1
 
-    const type = toText(getCellValue(row, ["taskname", "tasktype", "type", "task"]));
-    const text = toText(getCellValue(row, ["text", "tasktext", "content", "english"]));
-    const prompt = toText(getCellValue(row, ["prompt", "instruction", "instructions"])) || DEFAULT_PROMPT;
-    const assignedToRaw = toText(getCellValue(row, ["assignedto", "assignedtoid", "assignedtoemail", "assignee", "assigneeemail"]));
-    const languageVariants = getLanguageVariantsFromRow(row);
+    const dialogueId = toText(getCellValue(row, DIALOGUE_ID_ALIASES));
+    const chineseTranscript = toText(getCellValue(row, CHINESE_TRANSCRIPT_ALIASES));
+    const pinyin = toText(getCellValue(row, PINYIN_ALIASES));
 
-    if (!languageVariants.English && text) {
-      languageVariants.English = text;
+    if (!dialogueId || !chineseTranscript || !pinyin) {
+      rowErrors.push({ row: rowNumber, message: "Dialogue ID, Chinese Transcript, and Pinyin are all required." });
+      return;
     }
 
-    if (!type || !text) {
-      rowErrors.push({ row: excelRowNumber, message: "Task Name and Text are required." });
-      continue;
+    if (chineseTranscript.length > 20000) {
+      rowErrors.push({ row: rowNumber, message: "Chinese Transcript must be at most 20000 characters." });
+      return;
     }
 
-    if (text.length > 5000) {
-      rowErrors.push({ row: excelRowNumber, message: "Text must be at most 5000 characters." });
-      continue;
+    if (pinyin.length > 20000) {
+      rowErrors.push({ row: rowNumber, message: "Pinyin must be at most 20000 characters." });
+      return;
     }
 
-    if (prompt.length > 1000) {
-      rowErrors.push({ row: excelRowNumber, message: "Prompt must be at most 1000 characters." });
-      continue;
+    if (seenDialogueIds.has(dialogueId)) {
+      rowErrors.push({ row: rowNumber, message: `Duplicate Dialogue ID "${dialogueId}" within this file.` });
+      return;
     }
+    seenDialogueIds.add(dialogueId);
 
-    let assignedTo;
-    if (assignedToRaw) {
-      let user = null;
-      if (/^[a-f\d]{24}$/i.test(assignedToRaw)) {
-        user = await dao.getUserById(assignedToRaw);
-      } else if (assignedToRaw.includes("@")) {
-        user = await dao.getUserByEmail(assignedToRaw);
+    validDocs.push({ rowNumber, doc: { projectId, dialogueId, chineseTranscript, pinyin } });
+  });
+
+  // Catch duplicates against already-imported rows (e.g. a re-import of the same file).
+  if (validDocs.length) {
+    const existingIds = new Set(await dao.getExistingDialogueIds(projectId, validDocs.map((v) => v.doc.dialogueId)));
+    for (let i = validDocs.length - 1; i >= 0; i -= 1) {
+      if (existingIds.has(validDocs[i].doc.dialogueId)) {
+        rowErrors.push({ row: validDocs[i].rowNumber, message: `Dialogue ID "${validDocs[i].doc.dialogueId}" already exists in this project.` });
+        validDocs.splice(i, 1);
       }
-
-      if (!user) {
-        rowErrors.push({ row: excelRowNumber, message: "assignedTo user not found (use valid user ID or email)." });
-        continue;
-      }
-
-      if (user.role !== "user") {
-        rowErrors.push({ row: excelRowNumber, message: "assignedTo must be a user account." });
-        continue;
-      }
-
-      if (!user.isVerified) {
-        rowErrors.push({ row: excelRowNumber, message: "assignedTo user must be verified." });
-        continue;
-      }
-
-      assignedTo = user._id;
     }
+  }
 
-    try {
-      const task = await dao.createTask({ projectId, type, text, prompt, languageVariants, assignedTo });
-      createdTasks.push(task);
-      createdTaskIds.push(task._id);
-    } catch (err) {
-      rowErrors.push({ row: excelRowNumber, message: err.message || "Failed to create task." });
-    }
+  let createdCount = 0;
+  let createdTaskIds = [];
+  if (validDocs.length) {
+    const result = await dao.bulkCreateTasks(validDocs.map((v) => v.doc));
+    createdCount = result.insertedCount;
+    createdTaskIds = result.insertedIds;
+    result.writeErrors.forEach((we) => {
+      const rowNumber = validDocs[we.index]?.rowNumber ?? null;
+      rowErrors.push({ row: rowNumber, message: we.message });
+    });
   }
 
   if (createdTaskIds.length) {
@@ -502,15 +466,14 @@ const createTasksFromExcel = async (projectId, fileBuffer) => {
   }
 
   logger.info(
-    `Bulk task upload completed | project: ${projectId} | created: ${createdTasks.length} | failed: ${rowErrors.length}`
+    `Bulk task import completed | project: ${projectId} | created: ${createdCount} | failed: ${rowErrors.length}`
   );
 
   return {
-    createdCount: createdTasks.length,
+    createdCount,
     failedCount: rowErrors.length,
     totalRows: rows.length,
-    errors: rowErrors,
-    tasks: createdTasks,
+    errors: rowErrors.slice(0, 50),
   };
 };
 
@@ -527,5 +490,5 @@ module.exports = {
   deleteTaskSubmission,
   addAdminCommentToFlag,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
-  createTask, createTasksFromExcel, getTasksByProject, getTaskById, updateTask, deleteTask,
+  createTask, createTasksFromImport, getTasksByProject, getTaskById, updateTask, deleteTask,
 };
