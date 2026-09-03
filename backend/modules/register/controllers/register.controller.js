@@ -4,9 +4,9 @@ const logger = require("../../../logging/logger");
 
 const register = async (req, res, next) => {
   try {
-    const { name, email, role, password } = req.body;
+    const { name, email, role, password, phone } = req.body;
     logger.info(`Register attempt: ${email}`);
-    const user = await registerUser({ name, email, role, password });
+    const user = await registerUser({ name, email, role, password, phone });
     return successResponse(res, "Registration successful. Please wait for admin verification.", user, 201);
   } catch (err) {
     if (err.statusCode) {

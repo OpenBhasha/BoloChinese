@@ -20,6 +20,11 @@ router.use(authenticate, requireRole("admin"));
 router.get("/dashboard", ctrl.getDashboard);
 router.get("/users/progress", ctrl.getUsersProgress);
 
+// ─── Result export (partial results, no completion gate) ─────────────────────
+router.get("/export", ctrl.exportResults);
+router.get("/projects/:projectId/export", [validateObjectId("projectId"), validate], ctrl.exportProjectResults);
+router.get("/users/:id/export", [validateObjectId("id"), validate], ctrl.exportUserResults);
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 router.get("/users", ctrl.getAllUsers);
 router.get("/users/pending", ctrl.getPendingUsers);

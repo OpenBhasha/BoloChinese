@@ -48,7 +48,31 @@ const getUserSubmissions = async (userId) => {
   return dao.getUserSubmissions(userId);
 };
 
-const verifyUser = async (userId) => {
+// After an admin approves an annotator, give them a dedicated project named
+// after their username. Idempotent: a re-verify never creates a second project.
+const provisionDedicatedProject = async (user, adminId) => {
+  if (user.role !== "user") return null;
+  if (user.dedicatedProjectId) return null;
+
+  const projectName = user.username || `annotator-${String(user._id).slice(-6)}`;
+
+  let project = await dao.getProjectByName(projectName);
+  if (!project) {
+    project = await dao.createProject({
+      name: projectName,
+      description: `Personal project for ${user.name} (${user.email}). Upload the task CSV here.`,
+      createdBy: adminId,
+    });
+  }
+
+  await dao.assignProjectToUser(project._id, user._id, adminId);
+  await dao.updateUser(user._id, { dedicatedProjectId: project._id });
+
+  logger.info(`Dedicated project "${projectName}" provisioned for ${user.email} (project ${project._id}).`);
+  return project;
+};
+
+const verifyUser = async (userId, adminId) => {
   const user = await dao.verifyUser(userId);
   if (!user) {
     const err = new Error("User not found.");
@@ -56,7 +80,15 @@ const verifyUser = async (userId) => {
     throw err;
   }
   logger.info(`Admin verified user: ${user.email}`);
-  return user;
+
+  try {
+    await provisionDedicatedProject(user, adminId);
+  } catch (provisionErr) {
+    // Approval must not fail just because project provisioning hit a snag.
+    logger.error(`Could not provision dedicated project for ${user.email}: ${provisionErr.message}`);
+  }
+
+  return dao.getUserById(userId);
 };
 
 const updateUser = async (userId, payload) => {
@@ -477,6 +509,102 @@ const createTasksFromImport = async (projectId, fileBuffer, fileExtension) => {
   };
 };
 
+// ─── Result export (partial results allowed, no completion gate) ──────────────
+const EXPORT_COLUMNS = [
+  { key: "taskId", header: "Task ID" },
+  { key: "dialogueId", header: "Dialogue ID" },
+  { key: "project", header: "Project" },
+  { key: "user", header: "Annotator" },
+  { key: "userEmail", header: "Annotator Email" },
+  { key: "status", header: "Status" },
+  { key: "pinyinVerified", header: "Text Verified" },
+  { key: "isCorrected", header: "Edited" },
+  { key: "editCharCount", header: "Edited Chars" },
+  { key: "discarded", header: "Discarded" },
+  { key: "erroneous", header: "Erroneous" },
+  { key: "erroneousReason", header: "Erroneous Reason" },
+  { key: "chineseTranscript", header: "Chinese (source)" },
+  { key: "pinyin", header: "Pinyin (source)" },
+  { key: "correctedChineseTranscript", header: "Chinese (corrected)" },
+  { key: "correctedPinyin", header: "Pinyin (corrected)" },
+  { key: "finalChinese", header: "Chinese (final)" },
+  { key: "finalPinyin", header: "Pinyin (final)" },
+  { key: "audioUrl", header: "Audio URL" },
+  { key: "audioDurationSeconds", header: "Audio Duration (s)" },
+  { key: "audioSampleRate", header: "Sample Rate" },
+  { key: "audioBitDepth", header: "Bit Depth" },
+  { key: "audioSizeBytes", header: "Audio Size (bytes)" },
+  { key: "updatedAt", header: "Last Updated" },
+];
+
+const toExportRow = (submission) => {
+  const task = submission.taskId || {};
+  const correctedChinese = submission.correctedChineseTranscript || "";
+  const correctedPinyin = submission.correctedPinyin || "";
+  return {
+    taskId: task.taskId || "",
+    dialogueId: task.dialogueId || "",
+    project: submission.projectId?.name || "",
+    user: submission.userId?.name || "",
+    userEmail: submission.userId?.email || "",
+    status: submission.status || "",
+    pinyinVerified: submission.pinyinVerified === true ? "yes" : submission.pinyinVerified === false ? "no" : "",
+    isCorrected: submission.isCorrected ? "yes" : "no",
+    editCharCount: submission.editCharCount || 0,
+    discarded: submission.discarded?.flagged ? "yes" : "no",
+    erroneous: submission.erroneous?.flagged ? "yes" : "no",
+    erroneousReason: submission.erroneous?.reason || "",
+    chineseTranscript: task.chineseTranscript || "",
+    pinyin: task.pinyin || "",
+    correctedChineseTranscript: correctedChinese,
+    correctedPinyin,
+    finalChinese: correctedChinese || task.chineseTranscript || "",
+    finalPinyin: correctedPinyin || task.pinyin || "",
+    audioUrl: submission.audio?.url || "",
+    audioDurationSeconds: submission.audio?.durationSeconds || 0,
+    audioSampleRate: submission.audio?.sampleRate || "",
+    audioBitDepth: submission.audio?.bitDepth || "",
+    audioSizeBytes: submission.audio?.fileSizeBytes || 0,
+    updatedAt: submission.updatedAt ? new Date(submission.updatedAt).toISOString() : "",
+  };
+};
+
+const exportResults = async ({ projectId, userId } = {}) => {
+  const { toCsv } = require("../../../services/csv");
+
+  const filter = {};
+  let scopeLabel = "all";
+
+  if (projectId) {
+    const project = await dao.getProjectById(projectId);
+    if (!project) {
+      const err = new Error("Project not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+    filter.projectId = projectId;
+    scopeLabel = (project.name || "project").replace(/[^a-z0-9_-]+/gi, "-");
+  }
+
+  if (userId) {
+    const user = await dao.getUserById(userId);
+    if (!user) {
+      const err = new Error("User not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+    filter.userId = userId;
+    scopeLabel = (user.username || user.name || "user").replace(/[^a-z0-9_-]+/gi, "-");
+  }
+
+  const submissions = await dao.getSubmissionsForExport(filter);
+  const csv = toCsv(EXPORT_COLUMNS, submissions.map(toExportRow));
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  logger.info(`Results exported | scope: ${scopeLabel} | rows: ${submissions.length}`);
+  return { filename: `bolochinese-results-${scopeLabel}-${stamp}.csv`, csv, rowCount: submissions.length };
+};
+
 module.exports = {
   getDashboard,
   getUsersProgress,
@@ -489,6 +617,7 @@ module.exports = {
   getTaskSubmissionById,
   deleteTaskSubmission,
   addAdminCommentToFlag,
+  exportResults,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
   createTask, createTasksFromImport, getTasksByProject, getTaskById, updateTask, deleteTask,
 };

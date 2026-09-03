@@ -18,6 +18,38 @@ const userSchema = new mongoose.Schema(
       trim: true,
       match: [/^\S+@\S+\.\S+$/, "Please enter a valid email address"],
     },
+    phone: {
+      type: String,
+      trim: true,
+      maxlength: [30, "Phone number must be at most 30 characters"],
+      default: "",
+    },
+    // Auto-generated from the user's name at registration; unique across users.
+    username: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      unique: true,
+      sparse: true,
+    },
+    // Set when the name/identity supplied at registration looks anonymous or
+    // invalid, so an admin can scrutinise it before approving the account.
+    identityFlagged: {
+      type: Boolean,
+      default: false,
+    },
+    identityFlagReason: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    // The personal project auto-created for this annotator once an admin
+    // approves the account (named after the username).
+    dedicatedProjectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Project",
+      default: null,
+    },
     role: {
       type: String,
       enum: {

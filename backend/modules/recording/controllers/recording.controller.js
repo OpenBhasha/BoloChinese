@@ -4,7 +4,14 @@ const logger = require("../../../logging/logger");
 
 const shapeRecording = (rec) => {
   const audio = rec?.audio
-    ? { url: rec.audio.url || null, uploadedAt: rec.audio.uploadedAt || null }
+    ? {
+        url: rec.audio.url || null,
+        uploadedAt: rec.audio.uploadedAt || null,
+        durationSeconds: rec.audio.durationSeconds || 0,
+        sampleRate: rec.audio.sampleRate || null,
+        bitDepth: rec.audio.bitDepth || null,
+        channels: rec.audio.channels || null,
+      }
     : null;
   const user = rec?.userId ? { name: rec.userId.name, email: rec.userId.email } : null;
 

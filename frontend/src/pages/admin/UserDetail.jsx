@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { ChevronLeft, ClipboardList, CheckCircle2, Pencil, AlertTriangle, Clock3, Percent } from "lucide-react";
+import { ChevronLeft, ClipboardList, CheckCircle2, Pencil, AlertTriangle, Clock3, Percent, BadgeCheck, Trash2, Mic, Timer, Download } from "lucide-react";
 import AdminLayout from "../../components/layout/AdminLayout";
 import Modal from "../../components/ui/Modal";
 import StatCard from "../../components/ui/StatCard";
 import { PageSpinner, Spinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
 import { paginateRows } from "../../utils/pagination";
-import { formatDateTime, formatFileSize } from "../../utils/format";
-import { getUsersProgress, getUserSubmissions, streamSubmissionAudio } from "../../api/admin.api";
+import { formatDateTime, formatFileSize, formatDuration, downloadBlob } from "../../utils/format";
+import { getUsersProgress, getUserSubmissions, streamSubmissionAudio, exportUserResults } from "../../api/admin.api";
 
 export default function UserDetail() {
   const { id } = useParams();
@@ -21,6 +21,22 @@ export default function UserDetail() {
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [audioLoading, setAudioLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await exportUserResults(id);
+      const name = res.headers?.["content-disposition"]?.match(/filename="?([^"]+)"?/)?.[1]
+        || `bolochinese-results-${id}.csv`;
+      downloadBlob(res.data, name);
+      toast.success("Export downloaded.");
+    } catch {
+      toast.error("Failed to export results.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -78,17 +94,40 @@ export default function UserDetail() {
         <ChevronLeft size={16} /> Back to Users
       </Link>
 
-      <div className="mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-primary-900 mb-1">{progress.name}</h1>
-        <p className="text-primary-400 text-sm">{progress.email}</p>
+      <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-primary-900 mb-1 flex items-center gap-2">
+            {progress.name}
+            {progress.identityFlagged && (
+              <span className="badge-pending" title={progress.identityFlagReason || "Identity flagged"}>⚠ Identity flagged</span>
+            )}
+          </h1>
+          <p className="text-primary-400 text-sm">
+            {progress.email}
+            {progress.username ? ` · @${progress.username}` : ""}
+            {progress.phone ? ` · ${progress.phone}` : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting}
+          className="btn-secondary inline-flex items-center gap-2"
+        >
+          <Download size={16} /> {exporting ? "Exporting…" : "Export Results"}
+        </button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-10">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4 mb-10">
         <StatCard label="Assigned" value={progress.assigned} icon={ClipboardList} color="primary" />
+        <StatCard label="Validated" value={progress.validated ?? 0} icon={BadgeCheck} color="emerald" />
+        <StatCard label="Edited" value={progress.edited ?? progress.corrected ?? 0} icon={Pencil} color="blue" />
+        <StatCard label="Discarded" value={progress.discarded ?? 0} icon={Trash2} color="red" />
+        <StatCard label="Recorded" value={progress.recorded ?? 0} icon={Mic} color="emerald" />
         <StatCard label="Completed" value={progress.completed} icon={CheckCircle2} color="emerald" />
-        <StatCard label="Corrected" value={progress.corrected} icon={Pencil} color="blue" />
         <StatCard label="Erroneous" value={progress.erroneous} icon={AlertTriangle} color="red" />
         <StatCard label="Pending" value={progress.pending} icon={Clock3} color="amber" />
+        <StatCard label="Audio Duration" value={formatDuration(progress.audioDurationSeconds)} icon={Timer} color="primary" />
         <StatCard label="Progress" value={`${progress.progressPercent}%`} icon={Percent} color="primary" />
       </div>
 
@@ -192,6 +231,16 @@ export default function UserDetail() {
               </div>
             )}
 
+            {selectedSubmission.discarded?.flagged && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                <p className="label mb-2 text-red-700">Discarded</p>
+                <p className="text-sm text-black/80">The annotator discarded this item from the edit screen.</p>
+                {selectedSubmission.discarded?.discardedAt && (
+                  <p className="text-xs text-black/55 mt-2">Discarded at {formatDateTime(selectedSubmission.discarded.discardedAt)}</p>
+                )}
+              </div>
+            )}
+
             {selectedSubmission.reportedIssue?.flagged && (
               <div className="rounded-2xl border border-[#d3b9b1] bg-[#f8efec] p-4">
                 <p className="label mb-2 text-[#8d3d2e]">User's Flag Reason</p>
@@ -210,7 +259,7 @@ export default function UserDetail() {
                 <>
                   <audio controls src={audioUrl} className="w-full" />
                   <p className="text-xs text-black/55 mt-2">
-                    {formatFileSize(selectedSubmission.audio?.fileSizeBytes)} · {selectedSubmission.audio?.sampleRate} Hz · Uploaded {formatDateTime(selectedSubmission.audio?.uploadedAt)}
+                    {formatDuration(selectedSubmission.audio?.durationSeconds)} · {formatFileSize(selectedSubmission.audio?.fileSizeBytes)} · {selectedSubmission.audio?.sampleRate} Hz · {selectedSubmission.audio?.bitDepth}-bit · Uploaded {formatDateTime(selectedSubmission.audio?.uploadedAt)}
                   </p>
                 </>
               ) : (

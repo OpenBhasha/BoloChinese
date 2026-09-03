@@ -13,6 +13,12 @@ const registerValidator = [
     .isEmail().withMessage("Please provide a valid email address")
     .normalizeEmail(),
 
+  body("phone")
+    .optional({ checkFalsy: true })
+    .trim()
+    .isLength({ min: 6, max: 30 }).withMessage("Phone number must be between 6 and 30 characters")
+    .matches(/^[+\d][\d\s()-]{5,}$/).withMessage("Please provide a valid phone number"),
+
   body("role")
     .trim()
     .notEmpty().withMessage("Role is required")

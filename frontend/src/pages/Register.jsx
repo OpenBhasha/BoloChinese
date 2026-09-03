@@ -7,7 +7,7 @@ import { Spinner } from "../components/ui/Spinner";
 
 export default function Register() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: "", email: "", role: "user", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "user", password: "" });
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -45,14 +45,23 @@ export default function Register() {
         <div className="card">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">Full Name</label>
+              <label className="label">Full Name <span className="text-red-500">*</span></label>
               <input name="name" value={form.name} onChange={handleChange}
-                className="input" placeholder="" required />
+                className="input" placeholder="Your full legal name" required minLength={3} />
+              <p className="text-xs text-slate-500 mt-1">
+                Use your real name. Anonymous or placeholder names are flagged for admin review.
+              </p>
             </div>
             <div>
-              <label className="label">Email</label>
+              <label className="label">Email Address</label>
               <input name="email" type="email" value={form.email} onChange={handleChange}
-                className="input" placeholder="" required />
+                className="input" placeholder="you@example.com" required />
+            </div>
+            <div>
+              <label className="label">Phone Number</label>
+              <input name="phone" type="tel" value={form.phone} onChange={handleChange}
+                className="input" placeholder="+1 555 123 4567" />
+              <p className="text-xs text-slate-500 mt-1">Helps us corroborate your identity (recommended).</p>
             </div>
             <div>
               <label className="label">Role</label>

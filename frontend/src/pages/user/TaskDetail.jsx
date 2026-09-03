@@ -6,7 +6,7 @@ import Modal from "../../components/ui/Modal";
 import AudioRecorder from "../../components/task/AudioRecorder";
 import TranscriptVerification from "../../components/task/TranscriptVerification";
 import StatusBadge from "../../utils/statusBadge";
-import { ChevronLeft, CheckCircle2, Flag } from "lucide-react";
+import { ChevronLeft, CheckCircle2, Flag, Lock } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
 
@@ -95,13 +95,22 @@ export default function TaskDetail() {
     }
   };
 
+  // The recording screen is only available after the user confirms the text
+  // (Yes) or submits a correction (Submit). Erroneous / discarded items stay locked.
+  const canRecord = Boolean(
+    task &&
+      (task.pinyinVerified === true || task.isCorrected) &&
+      !task.erroneous?.flagged &&
+      !task.discarded?.flagged
+  );
+
   const currentTaskIndex = useMemo(
     () => projectTasks.findIndex((t) => t._id === id),
     [projectTasks, id]
   );
   const prevTask = currentTaskIndex > 0 ? projectTasks[currentTaskIndex - 1] : null;
   const nextTask = currentTaskIndex >= 0 ? projectTasks[currentTaskIndex + 1] : null;
-  const completedCount = projectTasks.filter((t) => t.status === "completed" || t.status === "erroneous").length;
+  const completedCount = projectTasks.filter((t) => ["completed", "erroneous", "discarded"].includes(t.status)).length;
   const progressPercent = projectTasks.length ? Math.round((completedCount / projectTasks.length) * 100) : 0;
 
   if (loading) return <UserLayout><PageSpinner /></UserLayout>;
@@ -182,22 +191,38 @@ export default function TaskDetail() {
           )}
         </div>
 
-        {/* Right: Record status */}
+        {/* Right: Record status — unlocked only after the text is confirmed/corrected */}
         <div className="space-y-4 min-w-0">
-          <AudioRecorder
-            task={task}
-            taskId={id}
-            prevTask={prevTask}
-            nextTask={nextTask}
-            onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
-            onSubmittingChange={setRecorderSubmitting}
-            onAfterUpload={async ({ background } = {}) => {
-              await refreshProjectTasks(task.projectId);
-              // A background upload means the user has already navigated to the next
-              // task by the time this resolves — refetching here would clobber it.
-              if (!background) await fetchTask(id);
-            }}
-          />
+          {canRecord ? (
+            <AudioRecorder
+              task={task}
+              taskId={id}
+              prevTask={prevTask}
+              nextTask={nextTask}
+              onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
+              onSubmittingChange={setRecorderSubmitting}
+              onAfterUpload={async ({ background } = {}) => {
+                await refreshProjectTasks(task.projectId);
+                // A background upload means the user has already navigated to the next
+                // task by the time this resolves — refetching here would clobber it.
+                if (!background) await fetchTask(id);
+              }}
+            />
+          ) : (
+            <div className="card flex flex-col items-center justify-center text-center py-12">
+              <div className="w-12 h-12 rounded-full bg-black/5 flex items-center justify-center mb-3">
+                <Lock size={20} className="text-black/50" />
+              </div>
+              <p className="label mb-1">Recording Locked</p>
+              <p className="text-sm text-black/60 max-w-xs">
+                {task.discarded?.flagged
+                  ? "This task was discarded. Reopen it to record."
+                  : task.erroneous?.flagged
+                  ? "This item is marked erroneous. Reopen it to record."
+                  : "Complete Step 1 — verify the text (Yes) or submit a correction — to unlock recording."}
+              </p>
+            </div>
+          )}
         </div>
       </div>
       </div>

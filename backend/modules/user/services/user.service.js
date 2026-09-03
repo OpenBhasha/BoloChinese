@@ -1,6 +1,14 @@
 const dao = require("../dao/user.dao");
 const { uploadAudio, deleteAudio } = require("../../../services/cloudinary.service");
+const { assertRecordingFormat } = require("../../../services/wav");
+const { measureEdit } = require("../../../services/textDiff");
+const config = require("../../../properties/config");
 const logger = require("../../../logging/logger");
+
+// Corrections above this fraction of the original transcript are outside the
+// "minor corrections only" guideline. We do not block them (annotators may
+// still submit), but we log them for auditing.
+const HEAVY_EDIT_RATIO = 0.25;
 
 const getMyTasks = async (userId) => {
   return dao.getTasksForUser(userId);
@@ -52,7 +60,9 @@ const getTaskDetail = async (taskId, userId) => {
     correctedChineseTranscript: submission?.correctedChineseTranscript || "",
     correctedPinyin: submission?.correctedPinyin || "",
     isCorrected: submission?.isCorrected || false,
+    editCharCount: submission?.editCharCount || 0,
     erroneous: submission?.erroneous || { flagged: false, reason: "", markedAt: null },
+    discarded: submission?.discarded || { flagged: false, discardedAt: null },
     audioVerifiedAt: submission?.audioVerifiedAt || null,
   };
 };
@@ -67,11 +77,21 @@ const uploadTaskAudio = async (taskId, audioBuffer, userId, fileSize) => {
     throw err;
   }
 
-  if (!existing.pinyinVerified && !existing.isCorrected) {
-    const err = new Error("Please verify the Pinyin (or correct it) before recording audio.");
+  if (existing.discarded?.flagged) {
+    const err = new Error("This item was discarded. Reconsider it before recording audio.");
     err.statusCode = 400;
     throw err;
   }
+
+  if (!existing.pinyinVerified && !existing.isCorrected) {
+    const err = new Error("Please verify the text (or submit a correction) before recording audio.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Enforce the capture contract: mono 16 kHz 16-bit PCM WAV.
+  const header = assertRecordingFormat(audioBuffer, config.audio);
+  const durationSeconds = Number(header.durationSeconds.toFixed(3));
 
   if (existing.audio && existing.audio.publicId) {
     try {
@@ -84,8 +104,20 @@ const uploadTaskAudio = async (taskId, audioBuffer, userId, fileSize) => {
   const { publicId, url, fileSizeBytes } = await uploadAudio(audioBuffer, taskId, userId);
 
   const status = "completed";
-  await dao.saveAudio(taskId, existing.projectId, userId, { publicId, url, fileSizeBytes, status });
-  logger.info(`Audio saved to Cloudinary for task ${taskId} | user: ${userId} | publicId: ${publicId}`);
+  await dao.saveAudio(taskId, existing.projectId, userId, {
+    publicId,
+    url,
+    fileSizeBytes,
+    durationSeconds,
+    sampleRate: header.sampleRate,
+    bitDepth: header.bitsPerSample,
+    channels: header.channels,
+    status,
+  });
+  logger.info(
+    `Audio saved to Cloudinary for task ${taskId} | user: ${userId} | publicId: ${publicId} | ` +
+      `${header.sampleRate}Hz/${header.bitsPerSample}bit/${header.channels}ch | ${durationSeconds}s`
+  );
   return getTaskDetail(taskId, userId);
 };
 
@@ -109,13 +141,33 @@ const verifyPinyin = async (taskId, userId, correct) => {
 
 const correctTranscript = async (taskId, userId, { correctedChineseTranscript, correctedPinyin }) => {
   const existing = await getTaskDetail(taskId, userId);
-  await dao.updateSubmissionCorrection(taskId, existing.projectId, userId, { correctedChineseTranscript, correctedPinyin });
+
+  const { distance, ratio } = measureEdit(existing.chineseTranscript, correctedChineseTranscript);
+  if (ratio > HEAVY_EDIT_RATIO) {
+    logger.warn(
+      `Heavy transcript edit on task ${taskId} by user ${userId}: ${distance} char changes ` +
+        `(${Math.round(ratio * 100)}% of the source). Guideline is minor corrections only.`
+    );
+  }
+
+  await dao.updateSubmissionCorrection(taskId, existing.projectId, userId, {
+    correctedChineseTranscript,
+    correctedPinyin,
+    editCharCount: distance,
+  });
   return getTaskDetail(taskId, userId);
 };
 
 const markErroneous = async (taskId, userId, reason) => {
   const existing = await getTaskDetail(taskId, userId);
   await dao.markSubmissionErroneous(taskId, existing.projectId, userId, reason);
+  return getTaskDetail(taskId, userId);
+};
+
+const discardTask = async (taskId, userId) => {
+  const existing = await getTaskDetail(taskId, userId);
+  await dao.markSubmissionDiscarded(taskId, existing.projectId, userId);
+  logger.info(`Task ${taskId} discarded by user ${userId}.`);
   return getTaskDetail(taskId, userId);
 };
 
@@ -137,5 +189,6 @@ module.exports = {
   verifyPinyin,
   correctTranscript,
   markErroneous,
+  discardTask,
   reconsiderTask,
 };

@@ -60,6 +60,13 @@ router.patch(
   ctrl.markErroneous
 );
 
+// POST /api/user/tasks/:id/discard
+router.post(
+  "/tasks/:id/discard",
+  [validateObjectId("id"), validate],
+  ctrl.discardTask
+);
+
 // POST /api/user/tasks/:id/reconsider
 router.post(
   "/tasks/:id/reconsider",

@@ -160,10 +160,27 @@ Base path: `/api`
 ### Admin routes
 - Prefix: `/admin`
 - Protected: requires authenticated user with `admin` role
+- Approving a user (`PATCH /admin/users/:id/verify`) also auto-creates a
+  dedicated project named after that annotator's generated username and assigns
+  it to them; upload the task CSV into that project afterwards.
+- Result export (partial results allowed, no completion gate):
+  - `GET /admin/export?projectId=&userId=` — CSV, optionally scoped
+  - `GET /admin/projects/:projectId/export` — CSV for one project
+  - `GET /admin/users/:id/export` — CSV for one annotator
 
 ### User routes
 - Prefix: `/user`
 - Protected: requires authenticated user with `user` role
+- Verify → Edit → Record: `PATCH /user/tasks/:id/verify-pinyin` (Yes/No),
+  `PATCH /user/tasks/:id/correct` (Submit an edit), `POST /user/tasks/:id/discard`
+  (Discard an edit), `POST /user/tasks/:id/reconsider` (undo erroneous/discarded).
+- Audio uploads (`POST /user/tasks/:id/audio`) must be mono 16 kHz 16-bit PCM
+  WAV; non-conforming files are rejected with `400`.
+
+### Registration
+`POST /auth/register` collects Full Name (required), Email, Phone Number, role
+and password. A unique username is generated from the name, and anonymous or
+invalid-looking identities are flagged for admin review.
 
 ## Auth Behavior
 

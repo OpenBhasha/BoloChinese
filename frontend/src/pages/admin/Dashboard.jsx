@@ -4,6 +4,7 @@ import StatCard from "../../components/ui/StatCard";
 import { getDashboard } from "../../api/admin.api";
 import { Users, FolderOpen, ClipboardList, ShieldCheck } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
+import { formatDuration } from "../../utils/format";
 import toast from "react-hot-toast";
 
 export default function AdminDashboard() {
@@ -40,6 +41,7 @@ export default function AdminDashboard() {
                 {[
                   { label: "Verified", value: stats?.users?.verified, color: "text-emerald-500" },
                   { label: "Pending", value: stats?.users?.pending, color: "text-amber-500" },
+                  { label: "Identity flagged", value: stats?.users?.flaggedIdentities ?? 0, color: "text-red-500" },
                   { label: "Total", value: stats?.users?.total, color: "text-primary-900" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="flex items-center justify-between py-2 border-b border-primary-100 last:border-0">
@@ -55,8 +57,12 @@ export default function AdminDashboard() {
               <h2 className="text-sm font-semibold text-primary-500 uppercase tracking-wide mb-4">Tasks</h2>
               <div className="space-y-3">
                 {[
+                  { label: "Validated", value: stats?.tasks?.validated ?? 0, color: "text-emerald-500" },
+                  { label: "Edited", value: stats?.tasks?.edited ?? stats?.tasks?.corrected ?? 0, color: "text-lime-600" },
+                  { label: "Discarded", value: stats?.tasks?.discarded ?? 0, color: "text-red-500" },
+                  { label: "Recorded", value: stats?.tasks?.recorded ?? 0, color: "text-emerald-500" },
+                  { label: "Recorded Audio", value: formatDuration(stats?.tasks?.audioDurationSeconds), color: "text-primary-900" },
                   { label: "Completed", value: stats?.tasks?.completed, color: "text-emerald-500" },
-                  { label: "Corrected", value: stats?.tasks?.corrected, color: "text-lime-600" },
                   { label: "Erroneous", value: stats?.tasks?.erroneous, color: "text-red-500" },
                   { label: "Requires Review", value: stats?.tasks?.requiresReview, color: "text-amber-500" },
                   { label: "Pending", value: stats?.tasks?.pending, color: "text-primary-500" },

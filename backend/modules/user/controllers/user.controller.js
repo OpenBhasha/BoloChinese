@@ -166,6 +166,20 @@ const markErroneous = async (req, res, next) => {
   }
 };
 
+const discardTask = async (req, res, next) => {
+  try {
+    const task = await userSvc.discardTask(req.params.id, req.user.id);
+    return successResponse(res, "Task discarded.", {
+      taskId: task.taskId,
+      status: task.status,
+      discarded: task.discarded,
+    });
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 const reconsiderTask = async (req, res, next) => {
   try {
     const task = await userSvc.reconsiderTask(req.params.id, req.user.id);
@@ -191,5 +205,6 @@ module.exports = {
   verifyPinyin,
   correctTranscript,
   markErroneous,
+  discardTask,
   reconsiderTask,
 };

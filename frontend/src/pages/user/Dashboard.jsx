@@ -29,7 +29,9 @@ export default function UserDashboard() {
         return;
       }
 
-      const firstUnfinished = tasks.find((task) => task.status !== "completed" && task.status !== "erroneous");
+      const firstUnfinished = tasks.find(
+        (task) => !["completed", "erroneous", "discarded"].includes(task.status)
+      );
       const taskToOpen = firstUnfinished || tasks[0];
       navigate(`/user/tasks/${taskToOpen._id}`);
     } catch (err) {

@@ -28,6 +28,7 @@ const taskSubmissionSchema = new mongoose.Schema(
       sampleRate: { type: Number, default: 16000 },
       bitDepth: { type: Number, default: 16 },
       channels: { type: Number, default: 1 },
+      durationSeconds: { type: Number, default: 0 },
       uploadedAt: { type: Date, default: null },
       fileSizeBytes: { type: Number, default: 0 },
     },
@@ -41,6 +42,7 @@ const taskSubmissionSchema = new mongoose.Schema(
         "recorded",
         "completed",
         "erroneous",
+        "discarded",
         "requires-review",
         "skipped",
       ],
@@ -71,6 +73,18 @@ const taskSubmissionSchema = new mongoose.Schema(
       flagged: { type: Boolean, default: false },
       reason: { type: String, trim: true, maxlength: 1000, default: "" },
       markedAt: { type: Date, default: null },
+    },
+    // Set when the annotator opens the edit screen and chooses Discard instead
+    // of submitting a correction. Reversible via the reconsider action.
+    discarded: {
+      flagged: { type: Boolean, default: false },
+      discardedAt: { type: Date, default: null },
+    },
+    // How many Chinese characters differ between the source transcript and the
+    // annotator's correction — kept so "minor corrections only" can be audited.
+    editCharCount: {
+      type: Number,
+      default: 0,
     },
     audioVerifiedAt: {
       type: Date,

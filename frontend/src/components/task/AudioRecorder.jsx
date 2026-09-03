@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Play, Pause, SkipBack, SkipForward } from "lucide-react";
+import { Mic, Play, Pause, SkipBack, SkipForward, RefreshCw, AudioLines } from "lucide-react";
 import { streamAudio, uploadAudio } from "../../api/user.api";
+import { createPcmRecorder, RECORDER_SAMPLE_RATE, RECORDER_BIT_DEPTH } from "../../utils/wavRecorder";
 import toast from "react-hot-toast";
 
 const formatTime = (seconds) => {
@@ -10,11 +11,24 @@ const formatTime = (seconds) => {
   return `${mins}:${String(secs).padStart(2, "0")}`;
 };
 
+const MIC_CONSTRAINTS = {
+  audio: {
+    channelCount: 1,
+    sampleRate: RECORDER_SAMPLE_RATE,
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  },
+};
+
 /**
  * Shared audio recorder used by every task type: record/stop, play back the
  * recording (or the previously submitted audio), and step to the prev/next
  * task in the project, uploading in the background when moving forward with
  * an unsaved recording.
+ *
+ * Capture is forced to mono 16 kHz 16-bit PCM WAV (see utils/wavRecorder.js) —
+ * the backend rejects anything else.
  */
 export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavigate, onAfterUpload, onSubmittingChange }) {
   const [recording, setRecording] = useState(false);
@@ -26,8 +40,13 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
   const [recordingElapsed, setRecordingElapsed] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
-  const mediaRef = useRef(null);
-  const chunksRef = useRef([]);
+  // Input-device awareness — shown to the user before they start recording.
+  const [inputDevices, setInputDevices] = useState([]);
+  const [activeDevice, setActiveDevice] = useState(null); // { label, deviceId }
+  const [detectingDevice, setDetectingDevice] = useState(false);
+
+  const recorderRef = useRef(null);
+  const streamRef = useRef(null);
   const audioRef = useRef(null);
   const recordingStartedAtRef = useRef(null);
   const recordingTickerRef = useRef(null);
@@ -35,6 +54,53 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
   useEffect(() => {
     onSubmittingChange?.(submitting);
   }, [submitting, onSubmittingChange]);
+
+  // ─── Input device discovery ────────────────────────────────────────────────
+  const refreshDeviceList = async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return [];
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter((d) => d.kind === "audioinput");
+      setInputDevices(inputs);
+      return inputs;
+    } catch {
+      return [];
+    }
+  };
+
+  useEffect(() => {
+    refreshDeviceList();
+    const handler = () => refreshDeviceList();
+    navigator.mediaDevices?.addEventListener?.("devicechange", handler);
+    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", handler);
+  }, []);
+
+  const resolveActiveDevice = (stream, inputs) => {
+    const track = stream.getAudioTracks()[0];
+    if (!track) return null;
+    const settings = track.getSettings?.() || {};
+    const match = (inputs || []).find((d) => d.deviceId && d.deviceId === settings.deviceId);
+    return {
+      deviceId: settings.deviceId || "",
+      label: match?.label || track.label || "System default microphone",
+    };
+  };
+
+  // Prompt for mic access purely to reveal the active input device (labels are
+  // hidden until permission is granted), then release it.
+  const detectMicrophone = async () => {
+    setDetectingDevice(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
+      const inputs = await refreshDeviceList();
+      setActiveDevice(resolveActiveDevice(stream, inputs));
+      stream.getTracks().forEach((t) => t.stop());
+    } catch {
+      toast.error("Microphone access denied. Please allow mic access to record.");
+    } finally {
+      setDetectingDevice(false);
+    }
+  };
 
   // Load the recorded/submitted audio whenever the task changes, and clear local state.
   useEffect(() => {
@@ -104,14 +170,32 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
+      streamRef.current = stream;
+
+      const inputs = await refreshDeviceList();
+      setActiveDevice(resolveActiveDevice(stream, inputs));
+
+      recorderRef.current = createPcmRecorder(stream);
       setRecordingElapsed(0);
       recordingStartedAtRef.current = Date.now();
-      chunksRef.current = [];
-      const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/wav" });
+      setRecording(true);
+    } catch {
+      toast.error("Microphone access denied. Please allow mic access.");
+    }
+  };
+
+  const stopRecording = async () => {
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    setRecording(false);
+
+    try {
+      const blob = recorder ? await recorder.stop() : null;
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+
+      if (blob && blob.size > 44) {
         setAudioBlob(blob);
         const url = URL.createObjectURL(blob);
         setAudioUrl((prev) => {
@@ -120,19 +204,12 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
         });
         setPlaying(false);
         setCurrentTime(0);
-        stream.getTracks().forEach((t) => t.stop());
-      };
-      mr.start();
-      mediaRef.current = mr;
-      setRecording(true);
+      } else {
+        toast.error("Recording was empty. Please try again.");
+      }
     } catch {
-      toast.error("Microphone access denied. Please allow mic access.");
+      toast.error("Could not finalise the recording. Please try again.");
     }
-  };
-
-  const stopRecording = () => {
-    mediaRef.current?.stop();
-    setRecording(false);
   };
 
   const renderRecordingWave = () => (
@@ -273,6 +350,38 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
   return (
     <>
       <div className="card">
+        {/* Active input device + enforced format — shown before recording starts */}
+        <div className="rounded-lg border border-primary-100 bg-primary-50/40 px-3 py-2.5 mb-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="label mb-0">Input Device</p>
+            <button
+              type="button"
+              onClick={detectMicrophone}
+              disabled={detectingDevice || recording}
+              className="text-xs text-primary-700 hover:text-primary-900 inline-flex items-center gap-1 disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={detectingDevice ? "animate-spin" : ""} />
+              {activeDevice ? "Re-check" : "Detect"}
+            </button>
+          </div>
+          <p className="text-sm text-primary-900 mt-1 flex items-center gap-1.5">
+            <Mic size={13} className="text-primary-500 shrink-0" />
+            <span className="truncate">
+              {activeDevice?.label
+                || inputDevices.find((d) => d.label)?.label
+                || "Not detected yet — click Detect and allow microphone access."}
+            </span>
+          </p>
+          {inputDevices.length > 1 && (
+            <p className="text-[11px] text-primary-400 mt-1">
+              {inputDevices.length} input devices available. Recording uses your system default; change it in your OS/browser settings.
+            </p>
+          )}
+          <p className="text-[11px] text-primary-500 mt-1 inline-flex items-center gap-1">
+            <AudioLines size={12} /> Enforced format: {RECORDER_SAMPLE_RATE / 1000} kHz · {RECORDER_BIT_DEPTH}-bit PCM · mono
+          </p>
+        </div>
+
         <p className="label mb-3">Recording Status</p>
         <div className="flex items-center justify-between gap-3 mb-3">
           <p className="text-sm text-slate-400">

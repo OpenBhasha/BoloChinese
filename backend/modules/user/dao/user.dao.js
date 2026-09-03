@@ -30,7 +30,9 @@ const mergeSubmissionFields = (submission) => ({
   correctedChineseTranscript: submission?.correctedChineseTranscript || "",
   correctedPinyin: submission?.correctedPinyin || "",
   isCorrected: submission?.isCorrected || false,
+  editCharCount: submission?.editCharCount || 0,
   erroneous: submission?.erroneous || { flagged: false, reason: "", markedAt: null },
+  discarded: submission?.discarded || { flagged: false, discardedAt: null },
   audioVerifiedAt: submission?.audioVerifiedAt || null,
 });
 
@@ -84,7 +86,7 @@ const getProjectsForUser = async (userId) => {
     const stats = statsByProject.get(key);
     if (s.status === "completed") stats.completed += 1;
     else if (s.status === "skipped") stats.skipped += 1;
-    else if (s.status === "erroneous") stats.erroneous += 1;
+    else if (s.status === "erroneous" || s.status === "discarded") stats.erroneous += 1;
     else if (IN_PROGRESS_STATUSES.has(s.status)) stats.inProgress += 1;
   });
 
@@ -136,7 +138,21 @@ const getTaskSubmissionForUser = async (taskId, userId) => {
   return TaskSubmission.findOne({ taskId, userId });
 };
 
-const saveAudio = async (taskId, projectId, userId, { publicId, url, fileSizeBytes, status }) => {
+const saveAudio = async (
+  taskId,
+  projectId,
+  userId,
+  {
+    publicId,
+    url,
+    fileSizeBytes,
+    durationSeconds = 0,
+    sampleRate = 16000,
+    bitDepth = 16,
+    channels = 1,
+    status,
+  }
+) => {
   return TaskSubmission.findOneAndUpdate(
     { taskId, userId },
     {
@@ -150,9 +166,10 @@ const saveAudio = async (taskId, projectId, userId, { publicId, url, fileSizeByt
         "audio.publicId": publicId,
         "audio.url": url,
         "audio.contentType": "audio/wav",
-        "audio.sampleRate": 16000,
-        "audio.bitDepth": 16,
-        "audio.channels": 1,
+        "audio.sampleRate": sampleRate,
+        "audio.bitDepth": bitDepth,
+        "audio.channels": channels,
+        "audio.durationSeconds": durationSeconds,
         "audio.uploadedAt": new Date(),
         "audio.fileSizeBytes": fileSizeBytes,
       },
@@ -212,7 +229,12 @@ const updateSubmissionVerification = async (taskId, projectId, userId, pinyinVer
   );
 };
 
-const updateSubmissionCorrection = async (taskId, projectId, userId, { correctedChineseTranscript, correctedPinyin }) => {
+const updateSubmissionCorrection = async (
+  taskId,
+  projectId,
+  userId,
+  { correctedChineseTranscript, correctedPinyin, editCharCount = 0 }
+) => {
   return TaskSubmission.findOneAndUpdate(
     { taskId, userId },
     {
@@ -222,8 +244,29 @@ const updateSubmissionCorrection = async (taskId, projectId, userId, { corrected
         userId,
         correctedChineseTranscript,
         correctedPinyin,
+        editCharCount,
         isCorrected: true,
+        pinyinVerified: false,
         status: "corrected",
+        "discarded.flagged": false,
+        "discarded.discardedAt": null,
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+const markSubmissionDiscarded = async (taskId, projectId, userId) => {
+  return TaskSubmission.findOneAndUpdate(
+    { taskId, userId },
+    {
+      $set: {
+        taskId,
+        projectId,
+        userId,
+        status: "discarded",
+        "discarded.flagged": true,
+        "discarded.discardedAt": new Date(),
       },
     },
     { new: true, upsert: true, setDefaultsOnInsert: true }
@@ -254,7 +297,10 @@ const reconsiderSubmission = async (taskId, userId) => {
     {
       $set: {
         "erroneous.flagged": false,
+        "discarded.flagged": false,
+        "discarded.discardedAt": null,
         pinyinVerified: null,
+        isCorrected: false,
         status: "in-progress",
       },
     },
@@ -276,5 +322,6 @@ module.exports = {
   updateSubmissionVerification,
   updateSubmissionCorrection,
   markSubmissionErroneous,
+  markSubmissionDiscarded,
   reconsiderSubmission,
 };

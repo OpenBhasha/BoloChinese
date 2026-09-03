@@ -23,4 +23,5 @@ export const verifyPinyin = (id, correct) => api.patch(`/user/tasks/${id}/verify
 export const correctTranscript = (id, correctedChineseTranscript, correctedPinyin) =>
   api.patch(`/user/tasks/${id}/correct`, { correctedChineseTranscript, correctedPinyin });
 export const markErroneous = (id, reason) => api.patch(`/user/tasks/${id}/mark-erroneous`, { reason });
+export const discardTask = (id) => api.post(`/user/tasks/${id}/discard`);
 export const reconsiderTask = (id) => api.post(`/user/tasks/${id}/reconsider`);

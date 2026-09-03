@@ -18,6 +18,7 @@ import { CheckCircle, Clock, ShieldCheck, FolderUp, Pencil, ChevronRight } from 
 import { PageSpinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
 import { paginateRows } from "../../utils/pagination";
+import { formatDuration } from "../../utils/format";
 import toast from "react-hot-toast";
 
 export default function AdminUsers() {
@@ -352,8 +353,14 @@ export default function AdminUsers() {
               <div key={u._id} className="p-4 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-medium text-primary-900 truncate">{u.name}</p>
+                    <p className="font-medium text-primary-900 truncate flex items-center gap-1.5">
+                      {u.name}
+                      {u.identityFlagged && (
+                        <span className="badge-pending shrink-0" title={u.identityFlagReason || "Identity flagged"}>⚠ Identity</span>
+                      )}
+                    </p>
                     <p className="text-xs text-primary-400 truncate">{u.email}</p>
+                    {u.username && <p className="text-[11px] text-primary-300 truncate">@{u.username}</p>}
                   </div>
                   <span className={u.role === "admin" ? "badge-admin shrink-0" : "badge-user shrink-0"}>{u.role}</span>
                 </div>
@@ -385,8 +392,19 @@ export default function AdminUsers() {
               <tbody>
                 {users.map((u) => (
                   <tr key={u._id} className="border-b border-primary-100 hover:bg-primary-50/40 transition">
-                    <td className="px-5 py-4 font-medium text-primary-900">{u.name}</td>
-                    <td className="px-5 py-4 text-primary-500">{u.email}</td>
+                    <td className="px-5 py-4 font-medium text-primary-900">
+                      <div className="flex items-center gap-2">
+                        <span>{u.name}</span>
+                        {u.identityFlagged && (
+                          <span className="badge-pending" title={u.identityFlagReason || "Identity flagged"}>⚠ Identity</span>
+                        )}
+                      </div>
+                      {u.username && <div className="text-[11px] text-primary-300 font-normal">@{u.username}</div>}
+                    </td>
+                    <td className="px-5 py-4 text-primary-500">
+                      {u.email}
+                      {u.phone && <div className="text-[11px] text-primary-300">{u.phone}</div>}
+                    </td>
                     <td className="px-5 py-4">
                       <span className={u.role === "admin" ? "badge-admin" : "badge-user"}>{u.role}</span>
                     </td>
@@ -432,10 +450,13 @@ export default function AdminUsers() {
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-primary-500">
                   <span>Assigned: {u.assigned}</span>
-                  <span>Completed: {u.completed}</span>
-                  <span>Corrected: {u.corrected}</span>
+                  <span>Validated: {u.validated ?? 0}</span>
+                  <span>Edited: {u.edited ?? u.corrected ?? 0}</span>
+                  <span>Discarded: {u.discarded ?? 0}</span>
+                  <span>Recorded: {u.recorded ?? 0}</span>
                   <span>Erroneous: {u.erroneous}</span>
                   <span>Pending: {u.pending}</span>
+                  <span>Audio: {formatDuration(u.audioDurationSeconds)}</span>
                   <span className="font-semibold text-primary-900">{u.progressPercent}%</span>
                 </div>
               </Link>
@@ -449,7 +470,7 @@ export default function AdminUsers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-primary-100 bg-primary-50/30">
-                  {["User", "Assigned", "Completed", "Corrected", "Erroneous", "Pending", "Progress", ""].map((h) => (
+                  {["User", "Assigned", "Validated", "Edited", "Discarded", "Recorded", "Erroneous", "Pending", "Audio", "Progress", ""].map((h) => (
                     <th key={h} className="text-left px-5 py-3.5 text-xs font-semibold text-primary-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -457,12 +478,22 @@ export default function AdminUsers() {
               <tbody>
                 {paginatedProgress.map((u) => (
                   <tr key={u._id} className="border-b border-primary-100 hover:bg-primary-50/40 transition">
-                    <td className="px-5 py-4 font-medium text-primary-900 whitespace-nowrap">{u.name}</td>
+                    <td className="px-5 py-4 font-medium text-primary-900 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <span>{u.name}</span>
+                        {u.identityFlagged && (
+                          <span className="badge-pending" title={u.identityFlagReason || "Identity flagged"}>⚠</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-5 py-4 text-primary-500">{u.assigned}</td>
-                    <td className="px-5 py-4 text-primary-500">{u.completed}</td>
-                    <td className="px-5 py-4 text-primary-500">{u.corrected}</td>
+                    <td className="px-5 py-4 text-primary-500">{u.validated ?? 0}</td>
+                    <td className="px-5 py-4 text-primary-500">{u.edited ?? u.corrected ?? 0}</td>
+                    <td className="px-5 py-4 text-primary-500">{u.discarded ?? 0}</td>
+                    <td className="px-5 py-4 text-primary-500">{u.recorded ?? 0}</td>
                     <td className="px-5 py-4 text-primary-500">{u.erroneous}</td>
                     <td className="px-5 py-4 text-primary-500">{u.pending}</td>
+                    <td className="px-5 py-4 text-primary-500 whitespace-nowrap">{formatDuration(u.audioDurationSeconds)}</td>
                     <td className="px-5 py-4 font-semibold text-primary-900">{u.progressPercent}%</td>
                     <td className="px-5 py-4">
                       <Link to={`/admin/users/${u._id}`} className="text-xs font-semibold text-primary-700 hover:text-primary-900 inline-flex items-center gap-1">
@@ -472,7 +503,7 @@ export default function AdminUsers() {
                   </tr>
                 ))}
                 {!paginatedProgress.length && (
-                  <tr><td colSpan={8} className="px-5 py-10 text-center text-slate-500">No users found.</td></tr>
+                  <tr><td colSpan={11} className="px-5 py-10 text-center text-slate-500">No users found.</td></tr>
                 )}
               </tbody>
             </table>

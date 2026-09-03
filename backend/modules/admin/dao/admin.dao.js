@@ -59,6 +59,10 @@ const getProjectById = async (id) => {
   return Project.findById(id).populate("createdBy", "name email").populate("tasks");
 };
 
+const getProjectByName = async (name) => {
+  return Project.findOne({ name });
+};
+
 const updateProject = async (id, data) => {
   return Project.findByIdAndUpdate(id, data, { new: true, runValidators: true });
 };
@@ -159,13 +163,28 @@ const getAssignedProjectIdsByUser = async (userId) => {
 
 // Per-user rollup for the admin dashboard's user progress table.
 const getPerUserProgress = async () => {
-  const users = await User.find({ role: "user" }).select("name email isVerified createdAt").lean();
+  const users = await User.find({ role: "user" })
+    .select("name email username phone isVerified identityFlagged identityFlagReason createdAt")
+    .lean();
   if (!users.length) return [];
 
-  const [assignments, submissionsByUserStatus] = await Promise.all([
+  const [assignments, rollup] = await Promise.all([
     ProjectAssignment.find({}).select("userId projectId").lean(),
     TaskSubmission.aggregate([
-      { $group: { _id: { userId: "$userId", status: "$status" }, count: { $sum: 1 } } },
+      {
+        $group: {
+          _id: "$userId",
+          submitted: { $sum: 1 },
+          validated: { $sum: { $cond: [{ $eq: ["$pinyinVerified", true] }, 1, 0] } },
+          edited: { $sum: { $cond: [{ $eq: ["$isCorrected", true] }, 1, 0] } },
+          discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
+          erroneous: { $sum: { $cond: [{ $eq: ["$status", "erroneous"] }, 1, 0] } },
+          requiresReview: { $sum: { $cond: [{ $eq: ["$status", "requires-review"] }, 1, 0] } },
+          recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
+          completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
+          audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
+        },
+      },
     ]),
   ]);
 
@@ -176,12 +195,7 @@ const getPerUserProgress = async () => {
     projectIdsByUser.get(key).push(a.projectId);
   });
 
-  const statusByUser = new Map();
-  submissionsByUserStatus.forEach((row) => {
-    const key = row._id.userId.toString();
-    if (!statusByUser.has(key)) statusByUser.set(key, {});
-    statusByUser.get(key)[row._id.status] = row.count;
-  });
+  const rollupByUser = new Map(rollup.map((row) => [row._id.toString(), row]));
 
   return Promise.all(
     users.map(async (u) => {
@@ -189,25 +203,41 @@ const getPerUserProgress = async () => {
       const projectIds = projectIdsByUser.get(key) || [];
       const assigned = projectIds.length ? await Task.countDocuments({ projectId: { $in: projectIds } }) : 0;
 
-      const statuses = statusByUser.get(key) || {};
-      const completed = statuses["completed"] || 0;
-      const corrected = statuses["corrected"] || 0;
-      const erroneous = statuses["erroneous"] || 0;
-      const requiresReview = statuses["requires-review"] || 0;
-      const submitted = Object.values(statuses).reduce((sum, n) => sum + n, 0);
+      const r = rollupByUser.get(key) || {};
+      const completed = r.completed || 0;
+      const edited = r.edited || 0;
+      const validated = r.validated || 0;
+      const discarded = r.discarded || 0;
+      const erroneous = r.erroneous || 0;
+      const requiresReview = r.requiresReview || 0;
+      const recorded = r.recorded || 0;
+      const audioDurationSeconds = Math.round(r.audioDurationSeconds || 0);
+      const submitted = r.submitted || 0;
       const pending = Math.max(0, assigned - submitted);
-      const progressPercent = assigned ? Math.round(((completed + erroneous) / assigned) * 100) : 0;
+      const progressPercent = assigned
+        ? Math.round(((completed + erroneous + discarded) / assigned) * 100)
+        : 0;
 
       return {
         _id: u._id,
         name: u.name,
         email: u.email,
+        username: u.username,
+        phone: u.phone,
         isVerified: u.isVerified,
+        identityFlagged: u.identityFlagged,
+        identityFlagReason: u.identityFlagReason,
         assigned,
         completed,
-        corrected,
+        // `corrected` kept as an alias of `edited` for backward compatibility.
+        corrected: edited,
+        edited,
+        validated,
+        discarded,
         erroneous,
         requiresReview,
+        recorded,
+        audioDurationSeconds,
         pending,
         progressPercent,
       };
@@ -226,6 +256,16 @@ const getTaskSubmissions = async (taskId) => {
   return TaskSubmission.find({ taskId })
     .populate("userId", "name email")
     .sort({ updatedAt: -1 });
+};
+
+// Every submission (any status — partial work included) for a result export.
+const getSubmissionsForExport = async (filter = {}) => {
+  return TaskSubmission.find(filter)
+    .populate("taskId", "taskId dialogueId chineseTranscript pinyin")
+    .populate("projectId", "name")
+    .populate("userId", "name email username")
+    .sort({ updatedAt: -1 })
+    .lean();
 };
 
 const getTaskSubmissionById = async (submissionId) => {
@@ -253,31 +293,53 @@ const addAdminCommentToFlag = async (submissionId, comment, adminId) => {
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 const getDashboardStats = async () => {
-  const [totalUsers, pendingUsers, totalProjects, totalTasks, submissionsByStatus] = await Promise.all([
-    User.countDocuments(),
-    User.countDocuments({ isVerified: false }),
-    Project.countDocuments(),
-    Task.countDocuments(),
-    TaskSubmission.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
-  ]);
+  const [totalUsers, pendingUsers, flaggedIdentities, totalProjects, totalTasks, submissionsByStatus, metrics] =
+    await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ isVerified: false }),
+      User.countDocuments({ identityFlagged: true }),
+      Project.countDocuments(),
+      Task.countDocuments(),
+      TaskSubmission.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+      TaskSubmission.aggregate([
+        {
+          $group: {
+            _id: null,
+            validated: { $sum: { $cond: [{ $eq: ["$pinyinVerified", true] }, 1, 0] } },
+            edited: { $sum: { $cond: [{ $eq: ["$isCorrected", true] }, 1, 0] } },
+            discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
+            recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
+            audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
+          },
+        },
+      ]),
+    ]);
 
   const statusMap = {};
   submissionsByStatus.forEach((s) => { statusMap[s._id] = s.count; });
   const completed = statusMap["completed"] || 0;
   const corrected = statusMap["corrected"] || 0;
   const erroneous = statusMap["erroneous"] || 0;
+  const discardedStatus = statusMap["discarded"] || 0;
   const requiresReview = statusMap["requires-review"] || 0;
   const inProgress = statusMap["in-progress"] || 0;
   const verified = statusMap["verified"] || 0;
-  const submitted = completed + corrected + erroneous + requiresReview + inProgress + verified + (statusMap["recorded"] || 0) + (statusMap["skipped"] || 0);
+  const submitted = completed + corrected + erroneous + discardedStatus + requiresReview + inProgress + verified + (statusMap["recorded"] || 0) + (statusMap["skipped"] || 0);
+
+  const m = metrics[0] || {};
 
   return {
-    users: { total: totalUsers, pending: pendingUsers, verified: totalUsers - pendingUsers },
+    users: { total: totalUsers, pending: pendingUsers, verified: totalUsers - pendingUsers, flaggedIdentities },
     projects: { total: totalProjects },
     tasks: {
       total: totalTasks,
       completed,
       corrected,
+      validated: m.validated || 0,
+      edited: m.edited || 0,
+      discarded: m.discarded || 0,
+      recorded: m.recorded || 0,
+      audioDurationSeconds: Math.round(m.audioDurationSeconds || 0),
       erroneous,
       requiresReview,
       // Rough site-wide indicator only: distinct tasks vs. total per-user submission
@@ -291,13 +353,14 @@ const getDashboardStats = async () => {
 module.exports = {
   getAllUsers, getPendingUsers, verifyUser, updateUser,
   getUserById, getUserByEmail,
-  createProject, getAllProjects, getProjectById, updateProject, deleteProject,
+  createProject, getAllProjects, getProjectById, getProjectByName, updateProject, deleteProject,
   createTask, addTaskToProject, addTasksToProject, getTasksByProject, getTaskById, updateTask, deleteTask, removeTaskFromProject,
   getExistingDialogueIds, bulkCreateTasks,
   assignProjectToUser,
   unassignProjectFromUser,
   getAssignedProjectIdsByUser,
   getTaskSubmissions,
+  getSubmissionsForExport,
   getTaskSubmissionById,
   deleteTaskSubmission,
   addAdminCommentToFlag,

@@ -46,8 +46,8 @@ const getPendingUsers = async (req, res, next) => {
 const verifyUser = async (req, res, next) => {
   try {
     logger.info(`Admin ${req.user.id} verifying user ${req.params.id}`);
-    const user = await svc.verifyUser(req.params.id);
-    return successResponse(res, "User verified successfully.", user);
+    const user = await svc.verifyUser(req.params.id, req.user.id);
+    return successResponse(res, "User verified successfully. A dedicated project was created for them.", user);
   } catch (err) {
     if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
     next(err);
@@ -251,6 +251,45 @@ const deleteSubmission = async (req, res, next) => {
   }
 };
 
+// ─── Result export ───────────────────────────────────────────────────────────
+const exportResults = async (req, res, next) => {
+  try {
+    const { projectId, userId } = req.query;
+    const { filename, csv } = await svc.exportResults({ projectId, userId });
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    // BOM so Excel opens the UTF-8 (Chinese) content correctly.
+    return res.send("\uFEFF" + csv);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const exportProjectResults = async (req, res, next) => {
+  try {
+    const { filename, csv } = await svc.exportResults({ projectId: req.params.projectId });
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.send("\uFEFF" + csv);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const exportUserResults = async (req, res, next) => {
+  try {
+    const { filename, csv } = await svc.exportResults({ userId: req.params.id });
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.send("\uFEFF" + csv);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 const addAdminCommentToFlag = async (req, res, next) => {
   try {
     const adminComment = String(req.body?.adminComment || "").trim();
@@ -280,4 +319,7 @@ module.exports = {
   streamSubmissionAudio,
   deleteSubmission,
   addAdminCommentToFlag,
+  exportResults,
+  exportProjectResults,
+  exportUserResults,
 };

@@ -13,4 +13,8 @@ const findUserById = async (id) => {
   return User.findById(id);
 };
 
-module.exports = { createUser, findUserByEmail, findUserById };
+const findUserByUsername = async (username) => {
+  return User.findOne({ username });
+};
+
+module.exports = { createUser, findUserByEmail, findUserById, findUserByUsername };

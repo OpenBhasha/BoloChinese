@@ -16,12 +16,13 @@ import {
   uploadTasksImport,
   downloadTaskTemplate,
   addAdminCommentToFlag,
+  exportProjectResults,
 } from "../../api/admin.api";
-import { Plus, Trash2, Pencil, ChevronLeft, Mic2, FileAudio, FileText, User2, CalendarClock, Upload, Download, MessageSquare } from "lucide-react";
+import { Plus, Trash2, Pencil, ChevronLeft, Mic2, FileAudio, FileText, User2, CalendarClock, Upload, Download, MessageSquare, FileDown } from "lucide-react";
 import { PageSpinner, Spinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
 import { paginateRows } from "../../utils/pagination";
-import { formatDateTime, formatFileSize } from "../../utils/format";
+import { formatDateTime, formatFileSize, downloadBlob } from "../../utils/format";
 import toast from "react-hot-toast";
 
 const EMPTY_TASK = { dialogueId: "", chineseTranscript: "", pinyin: "", assignedTo: "" };
@@ -56,6 +57,7 @@ export default function ProjectDetail() {
   const [isEditingComment, setIsEditingComment] = useState(false);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [exportingResults, setExportingResults] = useState(false);
   const [submissionSearch, setSubmissionSearch] = useState("");
   const [submissionPage, setSubmissionPage] = useState(1);
   const [flagPage, setFlagPage] = useState(1);
@@ -545,6 +547,21 @@ export default function ProjectDetail() {
     }
   };
 
+  const handleExportResults = async () => {
+    setExportingResults(true);
+    try {
+      const response = await exportProjectResults(id);
+      const name = response.headers?.["content-disposition"]?.match(/filename="?([^"]+)"?/)?.[1]
+        || `bolochinese-results-${id}.csv`;
+      downloadBlob(response.data, name);
+      toast.success("Results exported (partial results included).");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to export results");
+    } finally {
+      setExportingResults(false);
+    }
+  };
+
   const handleDownloadTemplate = async () => {
     setDownloadingTemplate(true);
     try {
@@ -663,6 +680,14 @@ export default function ProjectDetail() {
                 title="Download template file for bulk task upload"
               >
                 <Download size={16} /> {downloadingTemplate ? "Downloading..." : "Download Template"}
+              </button>
+              <button
+                onClick={handleExportResults}
+                className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
+                disabled={exportingResults}
+                title="Export all results for this project as CSV — partial results included, no need to wait for completion"
+              >
+                <FileDown size={16} /> {exportingResults ? "Exporting..." : "Export Results"}
               </button>
               <button onClick={openCreate} className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto">
                 <Plus size={16} /> Add Task
