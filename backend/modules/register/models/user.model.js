@@ -18,11 +18,17 @@ const userSchema = new mongoose.Schema(
       trim: true,
       match: [/^\S+@\S+\.\S+$/, "Please enter a valid email address"],
     },
+    // Stored normalized to E.164 by the register validator. Required for
+    // public registration (enforced there, not here, since internal flows
+    // like admin seeding create users without a phone). Unique + sparse so
+    // the same number can't back two accounts, while users with no phone
+    // (e.g. seeded admins) don't collide with each other.
     phone: {
       type: String,
       trim: true,
       maxlength: [30, "Phone number must be at most 30 characters"],
-      default: "",
+      unique: true,
+      sparse: true,
     },
     // Auto-generated from the user's name at registration; unique across users.
     username: {
