@@ -17,6 +17,13 @@ const getMyProjects = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const getMyStats = async (req, res, next) => {
+  try {
+    const stats = await userSvc.getMyStats(req.user.id);
+    return successResponse(res, "Stats retrieved.", stats);
+  } catch (err) { next(err); }
+};
+
 const getProjectTasks = async (req, res, next) => {
   try {
     const data = await userSvc.getProjectTasks(req.params.id, req.user.id);
@@ -196,6 +203,7 @@ const reconsiderTask = async (req, res, next) => {
 module.exports = {
   getMyTasks,
   getMyProjects,
+  getMyStats,
   getProjectTasks,
   getTaskDetail,
   uploadAudio,

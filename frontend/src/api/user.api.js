@@ -2,6 +2,7 @@ import api from "./axios";
 
 export const getMyTasks = () => api.get("/user/tasks");
 export const getMyProjects = () => api.get("/user/projects");
+export const getMyStats = () => api.get("/user/stats");
 export const getProjectTasks = (id) => api.get(`/user/projects/${id}/tasks`);
 export const getTaskDetail = (id) => api.get(`/user/tasks/${id}`);
 export const uploadAudio = (id, file) => {

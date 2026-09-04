@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Task = require("../../admin/models/task.model");
 const Project = require("../../admin/models/project.model");
 const ProjectAssignment = require("../../admin/models/projectAssignment.model");
@@ -106,6 +107,65 @@ const getProjectsForUser = async (userId) => {
       pending: 0,
     },
   }));
+};
+
+// Self-service rollup for the annotator's "My Stats" page. Mirrors the field
+// shape and formulas in admin.dao.getPerUserProgress so a user always sees the
+// same numbers an admin sees for them.
+const getMyStatsSummary = async (userId) => {
+  const projectIds = await getAssignedProjectIds(userId);
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+
+  const [assigned, rollup] = await Promise.all([
+    projectIds.length ? Task.countDocuments({ projectId: { $in: projectIds } }) : 0,
+    TaskSubmission.aggregate([
+      { $match: { userId: userObjectId } },
+      {
+        $group: {
+          _id: null,
+          submitted: { $sum: 1 },
+          validated: { $sum: { $cond: [{ $eq: ["$pinyinVerified", true] }, 1, 0] } },
+          edited: { $sum: { $cond: [{ $eq: ["$isCorrected", true] }, 1, 0] } },
+          discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
+          erroneous: { $sum: { $cond: [{ $eq: ["$status", "erroneous"] }, 1, 0] } },
+          requiresReview: { $sum: { $cond: [{ $eq: ["$status", "requires-review"] }, 1, 0] } },
+          recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
+          completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
+          audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
+        },
+      },
+    ]),
+  ]);
+
+  const r = rollup[0] || {};
+  const submitted = r.submitted || 0;
+  const completed = r.completed || 0;
+  const edited = r.edited || 0;
+  const validated = r.validated || 0;
+  const discarded = r.discarded || 0;
+  const erroneous = r.erroneous || 0;
+  const requiresReview = r.requiresReview || 0;
+  const recorded = r.recorded || 0;
+  const audioDurationSeconds = Math.round(r.audioDurationSeconds || 0);
+  const pending = Math.max(0, assigned - submitted);
+  const progressPercent = assigned
+    ? Math.round(((completed + erroneous + discarded) / assigned) * 100)
+    : 0;
+
+  return {
+    assigned,
+    submitted,
+    validated,
+    edited,
+    discarded,
+    erroneous,
+    requiresReview,
+    recorded,
+    completed,
+    audioDurationSeconds,
+    pending,
+    progressPercent,
+  };
 };
 
 const userHasProject = async (userId, projectId) => {
@@ -311,6 +371,7 @@ const reconsiderSubmission = async (taskId, userId) => {
 module.exports = {
   getTasksForUser,
   getProjectsForUser,
+  getMyStatsSummary,
   userHasProject,
   getProjectById,
   getTasksForUserByProject,

@@ -16,6 +16,9 @@ router.get("/tasks", ctrl.getMyTasks);
 // GET /api/user/projects
 router.get("/projects", ctrl.getMyProjects);
 
+// GET /api/user/stats
+router.get("/stats", ctrl.getMyStats);
+
 // GET /api/user/projects/:id/tasks
 router.get("/projects/:id/tasks", [validateObjectId("id"), validate], ctrl.getProjectTasks);
 
