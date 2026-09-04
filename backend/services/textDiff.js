@@ -33,8 +33,8 @@ const charEditDistance = (a = "", b = "") => {
 
 /**
  * @returns {{ distance: number, base: number, ratio: number }}
- *   distance — changed characters, base — length of the original,
- *   ratio — distance / base (0 when the original was empty).
+ *   distance - changed characters, base - length of the original,
+ *   ratio - distance / base (0 when the original was empty).
  */
 const measureEdit = (original = "", corrected = "") => {
   const distance = charEditDistance(original, corrected);

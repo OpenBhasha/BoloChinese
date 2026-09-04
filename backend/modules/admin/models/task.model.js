@@ -85,7 +85,7 @@ const taskSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// One dialogue per project — allows the same source dataset to be split across projects.
+// One dialogue per project - allows the same source dataset to be split across projects.
 taskSchema.index({ projectId: 1, dialogueId: 1 }, { unique: true });
 
 // Auto-generate taskId before save

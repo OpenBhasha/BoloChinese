@@ -258,7 +258,7 @@ const getTaskSubmissions = async (taskId) => {
     .sort({ updatedAt: -1 });
 };
 
-// Every submission (any status — partial work included) for a result export.
+// Every submission (any status - partial work included) for a result export.
 const getSubmissionsForExport = async (filter = {}) => {
   return TaskSubmission.find(filter)
     .populate("taskId", "taskId dialogueId chineseTranscript pinyin")

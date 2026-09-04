@@ -16,7 +16,7 @@ const createApp = () => {
   // CORS
   app.use(cors());
 
-  // Body parsers — increase limit for audio metadata
+  // Body parsers - increase limit for audio metadata
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -35,7 +35,7 @@ const createApp = () => {
 
   // Health check
   app.get("/health", (req, res) => {
-    res.json({ success: true, message: "BoloChinese API is running", timestamp: new Date().toISOString() });
+    res.json({ success: true, message: "Bolo API is running", timestamp: new Date().toISOString() });
   });
 
   // All API routes

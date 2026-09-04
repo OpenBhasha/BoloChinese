@@ -69,6 +69,14 @@
     color: #fff !important;
   }
 
+  /* Recorder button labels (Prev / Record / Next) sit on the primary-700
+     control bar and must stay white against the global black-text rule.
+     Descendants (SVG icons via currentColor) inherit the white too. */
+  .recorder-btn-label,
+  .recorder-btn-label * {
+    color: #fff !important;
+  }
+
   .btn-secondary {
     @apply bg-white border border-primary-100 hover:bg-primary-100 text-primary-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150;
   }

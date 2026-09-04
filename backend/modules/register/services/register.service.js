@@ -23,7 +23,7 @@ const generateUniqueUsername = async (name) => {
     if (!taken) return candidate;
   }
 
-  // Extremely unlikely fallback — a random suffix.
+  // Extremely unlikely fallback - a random suffix.
   return `${base}${Date.now().toString(36)}`;
 };
 
@@ -35,7 +35,7 @@ const PLACEHOLDER_NAMES = new Set([
 ]);
 
 // Unambiguous fakes (placeholder words, no letters at all, a single repeated
-// character, a name too short to be a name) are rejected outright — letting
+// character, a name too short to be a name) are rejected outright - letting
 // these through would defeat the point of asking for a real name. A bare
 // single word is only a soft signal: many cultures use mononyms, so that
 // case is flagged for admin review rather than blocked.
@@ -70,7 +70,7 @@ const registerUser = async ({ name, email, role, password, phone }) => {
     throw err;
   }
 
-  // Check duplicate phone — the same person re-registering under a new email
+  // Check duplicate phone - the same person re-registering under a new email
   // is the most common route to a duplicate account, so the phone (already
   // normalized to E.164 by the validator) must also be unique.
   const existingPhone = await findUserByPhone(phone);
@@ -116,7 +116,7 @@ const registerUser = async ({ name, email, role, password, phone }) => {
 
   logger.info(
     `New user registered: ${user.email} (role: ${user.role}, username: ${user.username})` +
-      (identity.flagged ? ` — identity flagged: ${identity.reason}` : "")
+      (identity.flagged ? ` - identity flagged: ${identity.reason}` : "")
   );
 
   return {

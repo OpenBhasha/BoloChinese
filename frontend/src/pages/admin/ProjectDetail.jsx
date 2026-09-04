@@ -552,7 +552,7 @@ export default function ProjectDetail() {
     try {
       const response = await exportProjectResults(id);
       const name = response.headers?.["content-disposition"]?.match(/filename="?([^"]+)"?/)?.[1]
-        || `bolochinese-results-${id}.csv`;
+        || `bolo-results-${id}.csv`;
       downloadBlob(response.data, name);
       toast.success("Results exported (partial results included).");
     } catch (err) {
@@ -671,7 +671,7 @@ export default function ProjectDetail() {
                 disabled={bulkUploading}
                 title="Upload an Excel or CSV file with dialogue_id, chinese_transcript, and pinyin columns"
               >
-                <Upload size={16} /> {bulkUploading ? "Uploading..." : "Upload Dialogues"}
+                <Upload size={16} /> {bulkUploading ? "Uploading..." : "Upload Tasks"}
               </button>
               <button
                 onClick={handleDownloadTemplate}
@@ -685,7 +685,7 @@ export default function ProjectDetail() {
                 onClick={handleExportResults}
                 className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
                 disabled={exportingResults}
-                title="Export all results for this project as CSV — partial results included, no need to wait for completion"
+                title="Export all results for this project as CSV - partial results included, no need to wait for completion"
               >
                 <FileDown size={16} /> {exportingResults ? "Exporting..." : "Export Results"}
               </button>
@@ -1268,7 +1268,7 @@ export default function ProjectDetail() {
            {/* <div>
               <label className="label">Assign To <span className="normal-case text-slate-500">(optional)</span></label>
               <select value={form.assignedTo} onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))} className="input">
-                <option value="">— Unassigned —</option>
+                <option value="">- Unassigned -</option>
                 {users.map((u) => <option key={u._id} value={u._id}>{u.name} ({u.email})</option>)}
               </select>
             </div>*/}

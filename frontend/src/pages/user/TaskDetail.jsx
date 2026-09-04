@@ -1,14 +1,44 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import UserLayout from "../../components/layout/UserLayout";
-import { getTaskDetail, getProjectTasks, flagTaskIssue } from "../../api/user.api";
-import Modal from "../../components/ui/Modal";
+import { getTaskDetail, getProjectTasks } from "../../api/user.api";
 import AudioRecorder from "../../components/task/AudioRecorder";
 import TranscriptVerification from "../../components/task/TranscriptVerification";
 import StatusBadge from "../../utils/statusBadge";
-import { ChevronLeft, CheckCircle2, Flag, Lock } from "lucide-react";
+import { ChevronLeft, CheckCircle2, SkipBack, SkipForward } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
+
+// Fixed bottom bar with Prev / Next - always visible so annotators can move
+// between tasks during verification, editing, or recording. When a fresh
+// recording is waiting to be sent, Next is hidden so Submit & Next inside
+// the recorder is the only way forward (no redundant navigation).
+function TaskNavBar({ prevTask, nextTask, onNavigate, hideNext }) {
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-primary-700 border-t border-primary-800 z-30">
+      <div className="max-w-5xl mx-auto h-16 px-6 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => (prevTask ? onNavigate(prevTask._id) : toast("This is the first task"))}
+          disabled={!prevTask}
+          className="inline-flex items-center gap-2 recorder-btn-label text-sm font-semibold disabled:opacity-40"
+        >
+          <SkipBack size={22} /> Previous
+        </button>
+        {!hideNext && (
+          <button
+            type="button"
+            onClick={() => (nextTask ? onNavigate(nextTask._id) : toast("You are on the last task"))}
+            disabled={!nextTask}
+            className="inline-flex items-center gap-2 recorder-btn-label text-sm font-semibold disabled:opacity-40"
+          >
+            Next <SkipForward size={22} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function TaskDetail() {
   const { id } = useParams();
@@ -18,11 +48,9 @@ export default function TaskDetail() {
   const [switchingTask, setSwitchingTask] = useState(false);
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [projectTasks, setProjectTasks] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [recorderSubmitting, setRecorderSubmitting] = useState(false);
-
-  const [isFlagModalOpen, setIsFlagModalOpen] = useState(false);
-  const [flagComment, setFlagComment] = useState("");
-  const [flagSubmitting, setFlagSubmitting] = useState(false);
+  const [pendingRecording, setPendingRecording] = useState(false);
 
   const refreshProjectTasks = async (projectId) => {
     const tasksRes = await getProjectTasks(projectId);
@@ -59,48 +87,11 @@ export default function TaskDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const handleSkipTask = async () => {
-    if (!nextTask) {
-      toast("You are on the last task");
-      return;
-    }
-    navigate(`/user/tasks/${nextTask._id}`);
-  };
-
-  const handleFlagTask = async () => {
-    setFlagComment("");
-    setIsFlagModalOpen(true);
-  };
-
-  const submitFlagTask = async (event) => {
-    event.preventDefault();
-    const note = flagComment.trim();
-
-    if (!note) {
-      toast.error("Please add a comment before flagging the task.");
-      return;
-    }
-
-    setFlagSubmitting(true);
-    try {
-      await flagTaskIssue(id, { note });
-      toast.success("Task flagged. Thanks for reporting.");
-      setIsFlagModalOpen(false);
-      setFlagComment("");
-      await fetchTask(id, { smooth: true });
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to report task issue");
-    } finally {
-      setFlagSubmitting(false);
-    }
-  };
-
   // The recording screen is only available after the user confirms the text
-  // (Yes) or submits a correction (Submit). Erroneous / discarded items stay locked.
+  // (Yes) or submits a correction (Submit). Discarded items stay locked.
   const canRecord = Boolean(
     task &&
       (task.pinyinVerified === true || task.isCorrected) &&
-      !task.erroneous?.flagged &&
       !task.discarded?.flagged
   );
 
@@ -116,9 +107,13 @@ export default function TaskDetail() {
   if (loading) return <UserLayout><PageSpinner /></UserLayout>;
   if (!task) return <UserLayout><p className="text-slate-400">Task not found.</p></UserLayout>;
 
+  // Bottom padding keeps the last card clear of the fixed nav bar (64px) and,
+  // when the recorder is mounted, the compact recorder panel above it (~72px).
+  const scrollBottomPad = canRecord ? "pb-40" : "pb-20";
+
   return (
     <UserLayout>
-      <div className="pb-32 md:pb-0">
+      <div className={scrollBottomPad}>
       <Link
         to={task?.projectId ? `/user/projects/${task.projectId}` : "/user"}
         className="flex items-center gap-1.5 text-sm text-black/70 hover:text-black mb-6 transition"
@@ -143,124 +138,67 @@ export default function TaskDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 overflow-x-hidden">
-        {/* Left: Task content */}
-        <div className="space-y-4 min-w-0">
-          <div className="card">
-            <p className="text-sm text-black/70 font-medium mb-2">{completedCount}/{projectTasks.length || 0} Completed</p>
-            <div className="w-full h-2 rounded-full bg-black/10 overflow-hidden mb-3">
-              <div className="h-full bg-primary-700" style={{ width: `${progressPercent}%` }} />
-            </div>
-            <button
-              type="button"
-              onClick={handleSkipTask}
-              disabled={recorderSubmitting || !nextTask}
-              className="btn-secondary text-sm px-4 py-1.5 disabled:opacity-50"
-            >
-              Skip
-            </button>
-            <button
-              type="button"
-              onClick={handleFlagTask}
-              disabled={recorderSubmitting || flagSubmitting}
-              className="btn-secondary text-sm px-4 py-1.5 inline-flex items-center gap-1.5"
-            >
-              <Flag size={14} /> Flag
-            </button>
+      <div className="space-y-4 min-w-0 overflow-x-hidden">
+        <div className="card">
+          <p className="text-sm text-black/70 font-medium mb-2">{completedCount}/{projectTasks.length || 0} Completed</p>
+          <div className="w-full h-2 rounded-full bg-black/10 overflow-hidden">
+            <div className="h-full bg-primary-700" style={{ width: `${progressPercent}%` }} />
           </div>
-
-          <TranscriptVerification
-            key={task._id}
-            task={task}
-            onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
-          />
-
-          {/* Audio status */}
-          {(task.audio?.publicId || task.audio?.url) && (
-            <div className="card border-emerald-500/30">
-              <p className="label text-emerald-400 mb-2">Audio Recorded</p>
-              <div className="flex items-center gap-3 text-xs text-slate-400">
-                <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                <div>
-                  <p className="text-emerald-300 font-medium">Audio uploaded successfully</p>
-                  <p className="mt-0.5">{(task.audio.fileSizeBytes / 1024).toFixed(1)} KB · {task.audio.sampleRate} Hz · {task.audio.bitDepth}-bit · Mono</p>
-                  <p className="mt-0.5 text-slate-500">{new Date(task.audio.uploadedAt).toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Right: Record status — unlocked only after the text is confirmed/corrected */}
-        <div className="space-y-4 min-w-0">
-          {canRecord ? (
+        <TranscriptVerification
+          key={task._id}
+          task={task}
+          nextTask={nextTask}
+          onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
+          onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
+        />
+
+        {/* Audio status */}
+        {(task.audio?.publicId || task.audio?.url) && (
+          <div className="card border-emerald-500/30">
+            <p className="label text-emerald-400 mb-2">Audio Recorded</p>
+            <div className="flex items-center gap-3 text-xs text-slate-400">
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+              <div>
+                <p className="text-emerald-300 font-medium">Audio uploaded successfully</p>
+                <p className="mt-0.5">{(task.audio.fileSizeBytes / 1024).toFixed(1)} KB · {task.audio.sampleRate} Hz · {task.audio.bitDepth}-bit · Mono</p>
+                <p className="mt-0.5 text-slate-500">{new Date(task.audio.uploadedAt).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      </div>
+
+      {/* Recorder pinned above the nav bar - only mounted after verification. */}
+      {canRecord && (
+        <div className="fixed bottom-16 left-0 right-0 z-20 bg-surface border-t border-primary-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+          <div className="max-w-5xl mx-auto px-3 py-2">
             <AudioRecorder
               task={task}
               taskId={id}
-              prevTask={prevTask}
               nextTask={nextTask}
               onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
               onSubmittingChange={setRecorderSubmitting}
+              onPendingRecordingChange={setPendingRecording}
               onAfterUpload={async ({ background } = {}) => {
                 await refreshProjectTasks(task.projectId);
                 // A background upload means the user has already navigated to the next
-                // task by the time this resolves — refetching here would clobber it.
+                // task by the time this resolves - refetching here would clobber it.
                 if (!background) await fetchTask(id);
               }}
             />
-          ) : (
-            <div className="card flex flex-col items-center justify-center text-center py-12">
-              <div className="w-12 h-12 rounded-full bg-black/5 flex items-center justify-center mb-3">
-                <Lock size={20} className="text-black/50" />
-              </div>
-              <p className="label mb-1">Recording Locked</p>
-              <p className="text-sm text-black/60 max-w-xs">
-                {task.discarded?.flagged
-                  ? "This task was discarded. Reopen it to record."
-                  : task.erroneous?.flagged
-                  ? "This item is marked erroneous. Reopen it to record."
-                  : "Complete Step 1 — verify the text (Yes) or submit a correction — to unlock recording."}
-              </p>
-            </div>
-          )}
+          </div>
         </div>
-      </div>
-      </div>
-
-      {isFlagModalOpen && (
-        <Modal title="Flag Task" onClose={() => !flagSubmitting && setIsFlagModalOpen(false)} size="md">
-          <form onSubmit={submitFlagTask} className="space-y-4">
-            <div>
-              <p className="text-sm text-black/70 mb-2">Describe the issue you found in this task.</p>
-              <textarea
-                className="input resize-none"
-                rows={4}
-                placeholder="Write your comment"
-                value={flagComment}
-                onChange={(e) => setFlagComment(e.target.value)}
-                maxLength={500}
-                required
-                disabled={flagSubmitting}
-              />
-              <p className="text-xs text-black/55 mt-1">{flagComment.length}/500</p>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setIsFlagModalOpen(false)}
-                disabled={flagSubmitting}
-              >
-                Cancel
-              </button>
-              <button type="submit" className="btn-primary" disabled={flagSubmitting}>
-                {flagSubmitting ? "Submitting..." : "Submit Flag"}
-              </button>
-            </div>
-          </form>
-        </Modal>
       )}
+
+      <TaskNavBar
+        prevTask={prevTask}
+        nextTask={nextTask}
+        onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
+        hideNext={pendingRecording}
+      />
     </UserLayout>
   );
 }

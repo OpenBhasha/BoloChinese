@@ -1,8 +1,8 @@
 import axios from "axios";
 
 // In dev (npm run dev) this is Vite's own build-time inlining of VITE_API_BASE_URL.
-// In the Docker/nginx image there is no build-time value to inline — the container
-// doesn't know its deployed API URL until it starts — so window.__ENV__ (written by
+// In the Docker/nginx image there is no build-time value to inline - the container
+// doesn't know its deployed API URL until it starts - so window.__ENV__ (written by
 // docker-entrypoint.d/40-env-config.sh from the *runtime* container env var, before
 // nginx starts serving) takes precedence when present.
 const apiBaseUrl =

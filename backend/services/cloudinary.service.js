@@ -22,7 +22,7 @@ const assertConfigured = () => {
 const uploadAudio = async (buffer, taskId, userId) => {
   assertConfigured();
 
-  const publicId = `bolochinese/audio/${userId}/${taskId}_${Date.now()}`;
+  const publicId = `bolo/audio/${userId}/${taskId}_${Date.now()}`;
   const result = await new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {

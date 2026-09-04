@@ -14,7 +14,7 @@ const registerValidator = [
     .isEmail().withMessage("Please provide a valid email address")
     .normalizeEmail(),
 
-  // Phone is required so every account has a corroborating identifier — it's
+  // Phone is required so every account has a corroborating identifier - it's
   // what makes duplicate-account and anonymous-account detection possible.
   body("phone")
     .trim()

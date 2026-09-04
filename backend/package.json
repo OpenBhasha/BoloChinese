@@ -1,7 +1,7 @@
 {
-  "name": "bolochinese-backend",
+  "name": "bolo-backend",
   "version": "1.0.0",
-  "description": "BoloChinese Transcript Verification & Audio Recording Backend API",
+  "description": "Bolo Transcript Verification & Audio Recording Backend API",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -27,6 +27,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^11.2.0",
     "nodemon": "^3.1.0"
   }
 }

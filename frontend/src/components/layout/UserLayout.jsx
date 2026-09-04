@@ -13,7 +13,7 @@ function SidebarContent({ user, onLogout, onNavClick }) {
       <div className="p-6 border-b border-white/20">
         <div className="flex items-center gap-2">
           <Mic2 className="text-white" size={22} />
-          <span className="font-bold text-lg text-white tracking-tight">BoloChinese</span>
+          <span className="font-bold text-lg text-white tracking-tight">Bolo</span>
         </div>
         <span className="text-xs text-white/60 font-semibold uppercase tracking-widest mt-0.5 block">User Panel</span>
       </div>
@@ -52,34 +52,35 @@ export default function UserLayout({ children }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Mobile overlay */}
+      {/* Overlay (desktop + mobile - sidebar is drawer-style on every viewport).
+          z-40 puts it above the fixed recorder (z-20) and TaskNavBar (z-30). */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/60 md:hidden"
+          className="fixed inset-0 z-40 bg-black/60"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - hidden by default, revealed via the menu button.
+          z-50 keeps it above the overlay and the fixed page chrome. */}
       <aside className={`
-        sidebar-surface fixed inset-y-0 left-0 z-30 w-64 bg-surface-card border-r border-surface-border flex flex-col
+        sidebar-surface fixed inset-y-0 left-0 z-50 w-64 bg-surface-card border-r border-surface-border flex flex-col
         transform transition-transform duration-200 ease-in-out
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        md:relative md:translate-x-0 md:flex
       `}>
         <SidebarContent user={user} onLogout={handleLogout} onNavClick={() => setSidebarOpen(false)} />
       </aside>
 
       {/* Main */}
       <main className="flex-1 overflow-y-auto bg-surface scrollbar-hidden flex flex-col min-w-0">
-        {/* Mobile top bar */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white md:hidden shrink-0">
-          <button onClick={() => setSidebarOpen(true)} className="!text-gray-800 hover:!text-gray-600 transition">
+        {/* Top bar with menu button (all viewports) */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shrink-0">
+          <button onClick={() => setSidebarOpen(true)} className="!text-gray-800 hover:!text-gray-600 transition" aria-label="Open menu">
             <Menu size={22} className="!text-gray-800" />
           </button>
           <div className="flex items-center gap-2">
             <Mic2 className="text-gray-800" size={18} />
-            <span className="font-bold !text-gray-800 tracking-tight">BoloChinese</span>
+            <span className="font-bold !text-gray-800 tracking-tight">Bolo</span>
           </div>
           <span className="text-xs !text-gray-600 font-semibold uppercase tracking-widest ml-1">User</span>
         </div>

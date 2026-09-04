@@ -13,7 +13,7 @@ export default function StatCard({ label, value, icon: Icon, color = "primary", 
       </div>
       <div>
         <p className="text-xs text-black/70 font-semibold uppercase tracking-wide">{label}</p>
-        <p className="text-2xl font-bold text-black mt-0.5">{value ?? "—"}</p>
+        <p className="text-2xl font-bold text-black mt-0.5">{value ?? "-"}</p>
         {sub && <p className="text-xs text-black/70 mt-0.5">{sub}</p>}
       </div>
     </div>
