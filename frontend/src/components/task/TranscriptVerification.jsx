@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { AlertTriangle, CheckCircle2, RotateCcw, Trash2 } from "lucide-react";
-import Modal from "../ui/Modal";
 import {
   verifyPinyin,
   correctTranscript,
@@ -76,7 +75,6 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [reconsidering, setReconsidering] = useState(false);
-  const [oneSidedWarning, setOneSidedWarning] = useState(null); // { editedSide, otherSide } | null
 
   const displayChinese = task.correctedChineseTranscript || task.chineseTranscript;
   const displayPinyin = task.correctedPinyin || task.pinyin;
@@ -110,9 +108,22 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
     }
   };
 
-  // Actually persist the edit. Called both when the user hits Submit with a
-  // balanced edit, and when they hit Final Submit inside the one-sided warning modal.
-  const submitCorrection = async () => {
+  const handleSubmitCorrection = async () => {
+    if (!chineseDraft.trim() || !pinyinDraft.trim()) {
+      toast.error("Chinese and Pinyin text can't be empty.");
+      return;
+    }
+
+    // One-sided edits are never allowed - Chinese and Pinyin must move
+    // together (or not at all).
+    const chineseChanged = chineseEdit.distance > 0;
+    const pinyinChanged = pinyinEdit.distance > 0;
+    if (chineseChanged !== pinyinChanged) {
+      const other = chineseChanged ? "Pinyin" : "Chinese";
+      toast.error(`Edit the ${other} text too - both sides must be updated together.`);
+      return;
+    }
+
     setSavingCorrection(true);
     try {
       await correctTranscript(task._id, chineseDraft, pinyinDraft);
@@ -124,35 +135,12 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
         status: "corrected",
       });
       toast.success("Correction submitted.");
-      setOneSidedWarning(null);
       setStep("ready-to-record");
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to submit correction.");
     } finally {
       setSavingCorrection(false);
     }
-  };
-
-  const handleSubmitCorrection = async () => {
-    if (!chineseDraft.trim() || !pinyinDraft.trim()) {
-      toast.error("Chinese and Pinyin text can't be empty.");
-      return;
-    }
-
-    // A one-sided edit (only Chinese or only Pinyin changed) is almost always
-    // an oversight - open a warning modal instead of submitting. The user can
-    // re-verify from the modal, or explicitly click Final Submit to proceed.
-    const chineseChanged = chineseEdit.distance > 0;
-    const pinyinChanged = pinyinEdit.distance > 0;
-    if (chineseChanged !== pinyinChanged) {
-      setOneSidedWarning({
-        editedSide: chineseChanged ? "Chinese" : "Pinyin",
-        otherSide: chineseChanged ? "Pinyin" : "Chinese",
-      });
-      return;
-    }
-
-    await submitCorrection();
   };
 
   const handleDiscard = async () => {
@@ -257,97 +245,53 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
 
   if (step === "editing") {
     return (
-      <>
-        <div className="space-y-4">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            <p className="font-semibold mb-0.5">Minor corrections only</p>
-            <p>
-              Fix deleted / missing words and background-noise or transcription artifacts. Don't rewrite the
-              sentence. Each Chinese character counts as one word.
-            </p>
-          </div>
-
-          <ScriptPanels
-            chinese={chineseDraft}
-            pinyin={pinyinDraft}
-            editable
-            disabled={savingCorrection || discarding}
-            onChineseChange={setChineseDraft}
-            onPinyinChange={setPinyinDraft}
-          />
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-black/60">
-            <span>Chinese edits: <b>{chineseEdit.distance}</b> / {chineseEdit.base} chars</span>
-            <span>Pinyin edits: <b>{pinyinEdit.distance}</b></span>
-            {heavyEdit && (
-              <span className="inline-flex items-center gap-1 text-amber-700 font-semibold">
-                <AlertTriangle size={13} /> Large change - keep edits minor.
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleSubmitCorrection}
-              disabled={savingCorrection || discarding}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {savingCorrection ? "Submitting…" : "Submit"}
-            </button>
-            <button
-              type="button"
-              onClick={handleDiscard}
-              disabled={savingCorrection || discarding}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-            >
-              <Trash2 size={14} /> {discarding ? "Discarding…" : "Discard"}
-            </button>
-          </div>
+      <div className="space-y-4">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <p className="font-semibold mb-0.5">Minor corrections only</p>
+          <p>
+            Fix deleted / missing words and background-noise or transcription artifacts. Don't rewrite the
+            sentence. Each Chinese character counts as one word. Chinese and Pinyin must be edited together.
+          </p>
         </div>
 
-        {oneSidedWarning && (
-          <Modal
-            title="One-sided edit"
-            size="md"
-            onClose={() => !savingCorrection && setOneSidedWarning(null)}
+        <ScriptPanels
+          chinese={chineseDraft}
+          pinyin={pinyinDraft}
+          editable
+          disabled={savingCorrection || discarding}
+          onChineseChange={setChineseDraft}
+          onPinyinChange={setPinyinDraft}
+        />
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-black/60">
+          <span>Chinese edits: <b>{chineseEdit.distance}</b> / {chineseEdit.base} chars</span>
+          <span>Pinyin edits: <b>{pinyinEdit.distance}</b></span>
+          {heavyEdit && (
+            <span className="inline-flex items-center gap-1 text-amber-700 font-semibold">
+              <AlertTriangle size={13} /> Large change - keep edits minor.
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleSubmitCorrection}
+            disabled={savingCorrection || discarding}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
-                <div className="text-sm text-black/80">
-                  <p className="font-medium mb-1">
-                    You edited the {oneSidedWarning.editedSide} text but left the {oneSidedWarning.otherSide} unchanged.
-                  </p>
-                  <p>
-                    Usually both sides need to change together. Please re-verify your correction:
-                    if the {oneSidedWarning.otherSide} also needs an update, close this dialog and edit it
-                    too. If your one-sided edit is intentional, click <b>Final Submit</b>.
-                  </p>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setOneSidedWarning(null)}
-                  disabled={savingCorrection}
-                >
-                  Re-verify
-                </button>
-                <button
-                  type="button"
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={submitCorrection}
-                  disabled={savingCorrection}
-                >
-                  {savingCorrection ? "Submitting…" : "Final Submit"}
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
-      </>
+            {savingCorrection ? "Submitting…" : "Submit"}
+          </button>
+          <button
+            type="button"
+            onClick={handleDiscard}
+            disabled={savingCorrection || discarding}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+          >
+            <Trash2 size={14} /> {discarding ? "Discarding…" : "Discard"}
+          </button>
+        </div>
+      </div>
     );
   }
 

@@ -52,17 +52,19 @@ export default function UserLayout({ children }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Overlay (desktop + mobile - sidebar is drawer-style on every viewport) */}
+      {/* Overlay (desktop + mobile - sidebar is drawer-style on every viewport).
+          z-40 puts it above the fixed recorder (z-20) and TaskNavBar (z-30). */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/60"
+          className="fixed inset-0 z-40 bg-black/60"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar - hidden by default, revealed via the menu button */}
+      {/* Sidebar - hidden by default, revealed via the menu button.
+          z-50 keeps it above the overlay and the fixed page chrome. */}
       <aside className={`
-        sidebar-surface fixed inset-y-0 left-0 z-30 w-64 bg-surface-card border-r border-surface-border flex flex-col
+        sidebar-surface fixed inset-y-0 left-0 z-50 w-64 bg-surface-card border-r border-surface-border flex flex-col
         transform transition-transform duration-200 ease-in-out
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
       `}>
