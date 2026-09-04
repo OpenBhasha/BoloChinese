@@ -8,15 +8,30 @@ import { Spinner } from "../components/ui/Spinner";
 export default function Register() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: "", email: "", phone: "", role: "user", password: "" });
+  const [countryCode, setCountryCode] = useState("+91");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    if (name === "countryCode") {
+      const digits = value.replace(/\D/g, "").slice(0, 3);
+      setCountryCode(digits ? `+${digits}` : "");
+      return;
+    }
+    if (name === "phone") {
+      setPhoneNumber(value.replace(/\D/g, ""));
+      return;
+    }
+    setForm((f) => ({ ...f, [name]: value }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await register(form);
+      const digits = phoneNumber.replace(/^0+/, "");
+      await register({ ...form, phone: `${countryCode}${digits}` });
       toast.success("Registered! Please wait for admin verification.");
       navigate("/login");
     } catch (err) {
@@ -59,10 +74,15 @@ export default function Register() {
             </div>
             <div>
               <label className="label">Phone Number <span className="text-red-500">*</span></label>
-              <input name="phone" type="tel" value={form.phone} onChange={handleChange}
-                className="input" placeholder="+86 138 0013 8000" required />
+              <div className="flex gap-2">
+                <input name="countryCode" type="tel" value={countryCode} onChange={handleChange}
+                  className="input w-16 shrink-0" required maxLength={4} inputMode="numeric"
+                  aria-label="Country calling code" />
+                <input name="phone" type="tel" value={phoneNumber} onChange={handleChange}
+                  className="input" required inputMode="numeric" autoComplete="tel-national" />
+              </div>
               <p className="text-xs text-slate-500 mt-1">
-                Include your country code (e.g. +86, +1). Used to verify your identity and prevent duplicate accounts.
+                Used to verify your identity and prevent duplicate accounts.
               </p>
             </div>
             <div>
