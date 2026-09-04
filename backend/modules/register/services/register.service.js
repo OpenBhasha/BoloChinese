@@ -61,7 +61,7 @@ const detectIdentityIssue = ({ name = "" }) => {
   return { blocked: false, flagged: false, reason: "" };
 };
 
-const registerUser = async ({ name, email, role, password, phone }) => {
+const registerUser = async ({ name, email, password, phone }) => {
   // Check duplicate email
   const existingEmail = await findUserByEmail(email);
   if (existingEmail) {
@@ -89,12 +89,15 @@ const registerUser = async ({ name, email, role, password, phone }) => {
 
   const username = await generateUniqueUsername(name);
 
+  // Public registration is always for the annotator role; admins are created
+  // through the seed script (ADMIN_EMAIL / ADMIN_PASSWORD) or promoted
+  // server-side. Do not accept `role` from the client payload.
   let user;
   try {
     user = await createUser({
       name,
       email,
-      role,
+      role: "user",
       password,
       phone,
       username,

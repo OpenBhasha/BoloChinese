@@ -38,7 +38,6 @@ export default function ProjectTasks() {
 
       <div className="mb-6 sm:mb-8">
         <h1 className="text-xl sm:text-2xl font-bold text-primary-900 mb-1">{project?.name || "Project"}</h1>
-        <p className="text-primary-500 text-sm">{project?.description || "Complete your assigned tasks in this project."}</p>
       </div>
 
       {tasks.length === 0 ? (

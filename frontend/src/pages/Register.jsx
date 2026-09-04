@@ -7,7 +7,7 @@ import { Spinner } from "../components/ui/Spinner";
 
 export default function Register() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "user", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [countryCode, setCountryCode] = useState("+91");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(false);
@@ -84,13 +84,6 @@ export default function Register() {
               <p className="text-xs text-slate-500 mt-1">
                 Used to verify your identity and prevent duplicate accounts.
               </p>
-            </div>
-            <div>
-              <label className="label">Role</label>
-              <select name="role" value={form.role} onChange={handleChange} className="input">
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-              </select>
             </div>
             <div>
               <label className="label">Password</label>
