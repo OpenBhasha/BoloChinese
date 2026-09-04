@@ -272,81 +272,56 @@ export default function AudioRecorder({
 
   const hasStoredAudio = Boolean(task?.audio?.publicId || task?.audio?.url);
 
-  // Center action(s): Record, or Retry + Submit-and-Next after a recording.
-  // Sizing / spacing scales down on small viewports so the row never wraps.
+  // Compact action strip - all buttons on a single row, no vertical labels.
+  // Sits inside a fixed panel (see TaskDetail), so vertical space is precious.
   const renderActions = () => {
-    const label = (text) => (
-      <span className="recorder-btn-label text-sm font-semibold mt-2 whitespace-nowrap">{text}</span>
-    );
-
     if (audioBlob) {
       return (
-        <div className="flex items-end justify-center gap-8 sm:gap-12">
-          <div className="flex flex-col items-center">
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white text-primary-700 flex items-center justify-center shadow-lg"
-              aria-label="Retry recording"
-            >
-              <RotateCcw size={22} />
-            </button>
-            {label("Retry")}
-          </div>
-          <div className="flex flex-col items-center">
-            <button
-              type="button"
-              onClick={handleSubmitAndNext}
-              disabled={submitting}
-              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg disabled:opacity-60"
-              aria-label={nextTask ? "Submit recording and go to next task" : "Submit recording"}
-            >
-              <Send size={22} />
-            </button>
-            {label(nextTask ? "Submit & Next" : "Submit")}
-          </div>
-        </div>
+        <>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="inline-flex items-center gap-1.5 rounded-full bg-white text-primary-700 px-3 h-10 text-sm font-semibold shadow"
+            aria-label="Retry recording"
+          >
+            <RotateCcw size={16} /> Retry
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmitAndNext}
+            disabled={submitting}
+            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 text-white px-4 h-10 text-sm font-semibold shadow disabled:opacity-60"
+            aria-label={nextTask ? "Submit recording and go to next task" : "Submit recording"}
+          >
+            <Send size={16} /> {nextTask ? "Submit & Next" : "Submit"}
+          </button>
+        </>
       );
     }
 
     return (
-      <div className="flex flex-col items-center">
-        <button
-          type="button"
-          onClick={recording ? stopRecording : startRecording}
-          className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition ${recording ? "bg-red-500 animate-pulse" : "bg-white"}`}
-          aria-label={recording ? "Stop recording" : "Start recording"}
-        >
-          {recording ? renderRecordingWave() : <Mic size={26} className="text-primary-700" />}
-        </button>
-        {label(recording ? "Stop" : "Record")}
-      </div>
+      <button
+        type="button"
+        onClick={recording ? stopRecording : startRecording}
+        className={`w-12 h-12 rounded-full flex items-center justify-center shadow transition ${recording ? "bg-red-500 animate-pulse" : "bg-white"}`}
+        aria-label={recording ? "Stop recording" : "Start recording"}
+      >
+        {recording ? renderRecordingWave() : <Mic size={22} className="text-primary-700" />}
+      </button>
     );
   };
 
   return (
-    <div className="card">
-      <p className="label mb-3">Recording</p>
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <p className="text-sm text-slate-400">
-          {recording
-            ? "Recording in progress..."
-            : audioBlob
-            ? "New recording ready. Submit & Next to send, or Retry to redo."
-            : "Tap the mic to start recording."}
-        </p>
-        {recording && (
-          <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-1">
-            {formatTime(recordingElapsed)}
-          </span>
-        )}
-      </div>
+    <div className="rounded-xl bg-primary-700 px-3 py-2 flex items-center justify-center gap-4">
+      {recording && (
+        <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">
+          {formatTime(recordingElapsed)}
+        </span>
+      )}
 
-      <div className="rounded-2xl bg-primary-700 px-4 sm:px-5 py-4">
-        {renderActions()}
-      </div>
+      {renderActions()}
 
-      {/* Playback UI only for audio already stored on the server. */}
+      {/* Playback strip for audio already stored on the server - compact inline. */}
       {hasStoredAudio && (
         <>
           <audio
@@ -357,14 +332,14 @@ export default function AudioRecorder({
             onEnded={() => setPlaying(false)}
             className="hidden"
           />
-          <div className="flex items-center gap-3 mt-4">
+          <div className="flex items-center gap-2 flex-1 min-w-0 max-w-md">
             <button
               type="button"
               onClick={togglePlayback}
-              className="text-primary-900"
+              className="recorder-btn-label"
               aria-label={playing ? "Pause audio" : "Play audio"}
             >
-              {playing ? <Pause size={22} /> : <Play size={22} />}
+              {playing ? <Pause size={20} /> : <Play size={20} />}
             </button>
             <input
               type="range"
@@ -378,9 +353,9 @@ export default function AudioRecorder({
                 audioRef.current.currentTime = value;
                 setCurrentTime(value);
               }}
-              className="w-full accent-primary-700"
+              className="flex-1 accent-white"
             />
-            <span className="text-xs text-primary-500 min-w-[76px] text-right">
+            <span className="recorder-btn-label text-[11px] min-w-[64px] text-right">
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
           </div>

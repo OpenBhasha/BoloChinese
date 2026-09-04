@@ -107,10 +107,9 @@ export default function TaskDetail() {
   if (loading) return <UserLayout><PageSpinner /></UserLayout>;
   if (!task) return <UserLayout><p className="text-slate-400">Task not found.</p></UserLayout>;
 
-  // Bottom padding on the scroll area keeps the last card clear of the fixed
-  // nav bar (h-16 = 64px) and, when the recorder is mounted, the fixed
-  // recorder panel above it.
-  const scrollBottomPad = canRecord ? "pb-[300px]" : "pb-20";
+  // Bottom padding keeps the last card clear of the fixed nav bar (64px) and,
+  // when the recorder is mounted, the compact recorder panel above it (~72px).
+  const scrollBottomPad = canRecord ? "pb-40" : "pb-20";
 
   return (
     <UserLayout>
@@ -175,7 +174,7 @@ export default function TaskDetail() {
       {/* Recorder pinned above the nav bar - only mounted after verification. */}
       {canRecord && (
         <div className="fixed bottom-16 left-0 right-0 z-20 bg-surface border-t border-primary-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-          <div className="max-w-5xl mx-auto px-4 py-3">
+          <div className="max-w-5xl mx-auto px-3 py-2">
             <AudioRecorder
               task={task}
               taskId={id}
