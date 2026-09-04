@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { LayoutDashboard, LogOut, Mic2, Menu, User2 } from "lucide-react";
+import { LayoutDashboard, LogOut, Mic2, Menu, BarChart3 } from "lucide-react";
 
 const NAV = [
   { to: "/user", label: "My Projects", icon: LayoutDashboard, end: true },
-  { to: "/user/profile", label: "Profile", icon: User2 },
+  { to: "/user/stats", label: "My Stats", icon: BarChart3 },
 ];
 
 function SidebarContent({ user, onLogout, onNavClick }) {
