@@ -107,9 +107,14 @@ export default function TaskDetail() {
   if (loading) return <UserLayout><PageSpinner /></UserLayout>;
   if (!task) return <UserLayout><p className="text-slate-400">Task not found.</p></UserLayout>;
 
+  // Bottom padding on the scroll area keeps the last card clear of the fixed
+  // nav bar (h-16 = 64px) and, when the recorder is mounted, the fixed
+  // recorder panel above it.
+  const scrollBottomPad = canRecord ? "pb-[300px]" : "pb-20";
+
   return (
     <UserLayout>
-      <div className="pb-24">
+      <div className={scrollBottomPad}>
       <Link
         to={task?.projectId ? `/user/projects/${task.projectId}` : "/user"}
         className="flex items-center gap-1.5 text-sm text-black/70 hover:text-black mb-6 transition"
@@ -164,26 +169,30 @@ export default function TaskDetail() {
             </div>
           </div>
         )}
+      </div>
+      </div>
 
-        {/* Recorder - only rendered once text verification is complete. */}
-        {canRecord && (
-          <AudioRecorder
-            task={task}
-            taskId={id}
-            nextTask={nextTask}
-            onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
-            onSubmittingChange={setRecorderSubmitting}
-            onPendingRecordingChange={setPendingRecording}
-            onAfterUpload={async ({ background } = {}) => {
-              await refreshProjectTasks(task.projectId);
-              // A background upload means the user has already navigated to the next
-              // task by the time this resolves - refetching here would clobber it.
-              if (!background) await fetchTask(id);
-            }}
-          />
-        )}
-      </div>
-      </div>
+      {/* Recorder pinned above the nav bar - only mounted after verification. */}
+      {canRecord && (
+        <div className="fixed bottom-16 left-0 right-0 z-20 bg-surface border-t border-primary-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+          <div className="max-w-5xl mx-auto px-4 py-3">
+            <AudioRecorder
+              task={task}
+              taskId={id}
+              nextTask={nextTask}
+              onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
+              onSubmittingChange={setRecorderSubmitting}
+              onPendingRecordingChange={setPendingRecording}
+              onAfterUpload={async ({ background } = {}) => {
+                await refreshProjectTasks(task.projectId);
+                // A background upload means the user has already navigated to the next
+                // task by the time this resolves - refetching here would clobber it.
+                if (!background) await fetchTask(id);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <TaskNavBar
         prevTask={prevTask}
