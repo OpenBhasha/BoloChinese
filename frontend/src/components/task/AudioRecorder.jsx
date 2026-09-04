@@ -244,11 +244,13 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
     setDuration(0);
   };
 
+  const hasStoredAudio = Boolean(task?.audio?.publicId || task?.audio?.url);
+
   // Free navigation once the task is finished (audio uploaded, completed, or discarded).
   const isTaskFinished =
     task?.status === "completed" ||
     task?.status === "discarded" ||
-    Boolean(task?.audio?.publicId || task?.audio?.url);
+    hasStoredAudio;
 
   const handleNext = async () => {
     if (!nextTask) {
@@ -296,7 +298,7 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
   // by Retry + Submit-and-Next so the annotator can review before sending.
   const renderControlRow = (size, { showLabels = false } = {}) => {
     const btnLabel = (text) =>
-      showLabels ? <span className="text-[11px] font-medium mt-1 text-white">{text}</span> : null;
+      showLabels ? <span className="recorder-btn-label text-sm font-semibold mt-2">{text}</span> : null;
 
     return (
       <div className="flex items-end justify-center gap-6 md:gap-10">
@@ -392,41 +394,48 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
           {renderControlRow(26, { showLabels: true })}
         </div>
 
-        <audio
-          ref={audioRef}
-          src={audioUrl || undefined}
-          onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
-          onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
-          onEnded={() => setPlaying(false)}
-          className="hidden"
-        />
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={togglePlayback}
-            className="text-primary-900"
-            aria-label={playing ? "Pause audio" : "Play audio"}
-          >
-            {playing ? <Pause size={22} /> : <Play size={22} />}
-          </button>
-          <input
-            type="range"
-            min="0"
-            max={duration || 0}
-            step="0.01"
-            value={currentTime}
-            onChange={(e) => {
-              const value = Number(e.target.value);
-              if (!audioRef.current) return;
-              audioRef.current.currentTime = value;
-              setCurrentTime(value);
-            }}
-            className="w-full accent-primary-700"
-          />
-          <span className="text-xs text-primary-500 min-w-[76px] text-right">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </span>
-        </div>
+        {/* Playback is only offered for audio already stored on the server
+            (i.e. `task.audio` is set). A fresh recording is meant to be sent
+            via Submit & Next or dropped via Retry, without a preview step. */}
+        {hasStoredAudio && (
+          <>
+            <audio
+              ref={audioRef}
+              src={audioUrl || undefined}
+              onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+              onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
+              onEnded={() => setPlaying(false)}
+              className="hidden"
+            />
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={togglePlayback}
+                className="text-primary-900"
+                aria-label={playing ? "Pause audio" : "Play audio"}
+              >
+                {playing ? <Pause size={22} /> : <Play size={22} />}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max={duration || 0}
+                step="0.01"
+                value={currentTime}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  if (!audioRef.current) return;
+                  audioRef.current.currentTime = value;
+                  setCurrentTime(value);
+                }}
+                className="w-full accent-primary-700"
+              />
+              <span className="text-xs text-primary-500 min-w-[76px] text-right">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-primary-700 border-t border-primary-800 z-30 md:hidden">
