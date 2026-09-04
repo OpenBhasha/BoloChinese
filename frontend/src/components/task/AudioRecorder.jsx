@@ -27,7 +27,7 @@ const MIC_CONSTRAINTS = {
  * task in the project, uploading in the background when moving forward with
  * an unsaved recording.
  *
- * Capture is forced to mono 16 kHz 16-bit PCM WAV (see utils/wavRecorder.js) —
+ * Capture is forced to mono 16 kHz 16-bit PCM WAV (see utils/wavRecorder.js) -
  * the backend rejects anything else.
  */
 export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavigate, onAfterUpload, onSubmittingChange, canRecord = true, lockedReason }) {
@@ -40,7 +40,7 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
   const [recordingElapsed, setRecordingElapsed] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
-  // Input-device awareness — shown to the user before they start recording.
+  // Input-device awareness - shown to the user before they start recording.
   const [inputDevices, setInputDevices] = useState([]);
   const [activeDevice, setActiveDevice] = useState(null); // { label, deviceId }
   const [detectingDevice, setDetectingDevice] = useState(false);
@@ -270,6 +270,16 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
     }
   };
 
+  // Terminal/finished states where the recorder has nothing left to gate on:
+  // - completed: audio uploaded
+  // - erroneous / discarded: text step is terminal (canRecord is false)
+  // In all three, prev/next navigate freely with no toast.
+  const isTaskFinished =
+    task?.status === "completed" ||
+    task?.status === "erroneous" ||
+    task?.status === "discarded" ||
+    Boolean(task?.audio?.publicId || task?.audio?.url);
+
   const handleNext = async () => {
     if (!nextTask) {
       toast("You are on the last task");
@@ -279,9 +289,8 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
       toast.error("Stop recording before moving to next task.");
       return;
     }
-    // While recording is locked (verification step) Next behaves like Skip —
-    // there's no audio to upload, so just navigate.
-    if (!canRecord) {
+    // Verification step or a terminal state: nothing to upload, just navigate.
+    if (!canRecord || isTaskFinished) {
       onNavigate(nextTask._id);
       return;
     }
@@ -292,11 +301,7 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
       onNavigate(nextTask._id);
       return;
     }
-    if (task.audio?.publicId || task.audio?.url) {
-      onNavigate(nextTask._id);
-      return;
-    }
-    toast.error("Please record audio first. Use Skip if you want to continue without submitting.");
+    toast.error("Please record audio before moving on.");
   };
 
   const handlePrev = () => {
@@ -318,7 +323,7 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
     }
   };
 
-  // Shared control row (rewind / record / next) — rendered once for the desktop bar
+  // Shared control row (rewind / record / next) - rendered once for the desktop bar
   // and once for the fixed mobile bottom bar, sized differently but never duplicated in logic.
   // The middle record button is hidden while `canRecord` is false (verification step);
   // Prev / Next always render so annotators can still move between tasks.
@@ -362,7 +367,7 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
       <div className="card">
         {canRecord ? (
           <>
-            {/* Active input device + enforced format — shown before recording starts */}
+            {/* Active input device + enforced format - shown before recording starts */}
             <div className="rounded-lg border border-primary-100 bg-primary-50/40 px-3 py-2.5 mb-4">
               <div className="flex items-center justify-between gap-2">
                 <p className="label mb-0">Input Device</p>
@@ -381,7 +386,7 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
                 <span className="truncate">
                   {activeDevice?.label
                     || inputDevices.find((d) => d.label)?.label
-                    || "Not detected yet — click Detect and allow microphone access."}
+                    || "Not detected yet - click Detect and allow microphone access."}
                 </span>
               </p>
               {inputDevices.length > 1 && (

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import UserLayout from "../../components/layout/UserLayout";
-import { getTaskDetail, getProjectTasks, flagTaskIssue } from "../../api/user.api";
-import Modal from "../../components/ui/Modal";
+import { getTaskDetail, getProjectTasks } from "../../api/user.api";
 import AudioRecorder from "../../components/task/AudioRecorder";
 import TranscriptVerification from "../../components/task/TranscriptVerification";
 import StatusBadge from "../../utils/statusBadge";
-import { ChevronLeft, CheckCircle2, Flag } from "lucide-react";
+import { ChevronLeft, CheckCircle2 } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
 
@@ -19,10 +18,6 @@ export default function TaskDetail() {
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [projectTasks, setProjectTasks] = useState([]);
   const [recorderSubmitting, setRecorderSubmitting] = useState(false);
-
-  const [isFlagModalOpen, setIsFlagModalOpen] = useState(false);
-  const [flagComment, setFlagComment] = useState("");
-  const [flagSubmitting, setFlagSubmitting] = useState(false);
 
   const refreshProjectTasks = async (projectId) => {
     const tasksRes = await getProjectTasks(projectId);
@@ -58,42 +53,6 @@ export default function TaskDetail() {
     fetchTask(id, { smooth: !isInitialLoad });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-
-  const handleSkipTask = async () => {
-    if (!nextTask) {
-      toast("You are on the last task");
-      return;
-    }
-    navigate(`/user/tasks/${nextTask._id}`);
-  };
-
-  const handleFlagTask = async () => {
-    setFlagComment("");
-    setIsFlagModalOpen(true);
-  };
-
-  const submitFlagTask = async (event) => {
-    event.preventDefault();
-    const note = flagComment.trim();
-
-    if (!note) {
-      toast.error("Please add a comment before flagging the task.");
-      return;
-    }
-
-    setFlagSubmitting(true);
-    try {
-      await flagTaskIssue(id, { note });
-      toast.success("Task flagged. Thanks for reporting.");
-      setIsFlagModalOpen(false);
-      setFlagComment("");
-      await fetchTask(id, { smooth: true });
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to report task issue");
-    } finally {
-      setFlagSubmitting(false);
-    }
-  };
 
   // The recording screen is only available after the user confirms the text
   // (Yes) or submits a correction (Submit). Erroneous / discarded items stay locked.
@@ -146,25 +105,9 @@ export default function TaskDetail() {
       <div className="space-y-4 min-w-0 overflow-x-hidden">
         <div className="card">
           <p className="text-sm text-black/70 font-medium mb-2">{completedCount}/{projectTasks.length || 0} Completed</p>
-          <div className="w-full h-2 rounded-full bg-black/10 overflow-hidden mb-3">
+          <div className="w-full h-2 rounded-full bg-black/10 overflow-hidden">
             <div className="h-full bg-primary-700" style={{ width: `${progressPercent}%` }} />
           </div>
-          <button
-            type="button"
-            onClick={handleSkipTask}
-            disabled={recorderSubmitting || !nextTask}
-            className="btn-secondary text-sm px-4 py-1.5 disabled:opacity-50"
-          >
-            Skip
-          </button>
-          <button
-            type="button"
-            onClick={handleFlagTask}
-            disabled={recorderSubmitting || flagSubmitting}
-            className="btn-secondary text-sm px-4 py-1.5 inline-flex items-center gap-1.5"
-          >
-            <Flag size={14} /> Flag
-          </button>
         </div>
 
         <TranscriptVerification
@@ -188,7 +131,7 @@ export default function TaskDetail() {
           </div>
         )}
 
-        {/* Recorder — always mounted so prev/next remain available; the mic button
+        {/* Recorder - always mounted so prev/next remain available; the mic button
             itself is hidden while text verification isn't complete. */}
         <AudioRecorder
           task={task}
@@ -201,54 +144,19 @@ export default function TaskDetail() {
               ? "This task was discarded. Reopen it to record."
               : task.erroneous?.flagged
               ? "This item is marked erroneous. Reopen it to record."
-              : "Complete Step 1 — verify the text (Yes) or submit a correction — to unlock recording."
+              : "Complete Step 1 - verify the text (Yes) or submit a correction - to unlock recording."
           }
           onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
           onSubmittingChange={setRecorderSubmitting}
           onAfterUpload={async ({ background } = {}) => {
             await refreshProjectTasks(task.projectId);
             // A background upload means the user has already navigated to the next
-            // task by the time this resolves — refetching here would clobber it.
+            // task by the time this resolves - refetching here would clobber it.
             if (!background) await fetchTask(id);
           }}
         />
       </div>
       </div>
-
-      {isFlagModalOpen && (
-        <Modal title="Flag Task" onClose={() => !flagSubmitting && setIsFlagModalOpen(false)} size="md">
-          <form onSubmit={submitFlagTask} className="space-y-4">
-            <div>
-              <p className="text-sm text-black/70 mb-2">Describe the issue you found in this task.</p>
-              <textarea
-                className="input resize-none"
-                rows={4}
-                placeholder="Write your comment"
-                value={flagComment}
-                onChange={(e) => setFlagComment(e.target.value)}
-                maxLength={500}
-                required
-                disabled={flagSubmitting}
-              />
-              <p className="text-xs text-black/55 mt-1">{flagComment.length}/500</p>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setIsFlagModalOpen(false)}
-                disabled={flagSubmitting}
-              >
-                Cancel
-              </button>
-              <button type="submit" className="btn-primary" disabled={flagSubmitting}>
-                {flagSubmitting ? "Submitting..." : "Submit Flag"}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
     </UserLayout>
   );
 }

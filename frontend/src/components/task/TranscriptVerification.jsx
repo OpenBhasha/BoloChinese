@@ -65,11 +65,11 @@ function ScriptPanels({ chinese, pinyin, editable, onChineseChange, onPinyinChan
 
 /**
  * Verify → Edit → Record workflow:
- *   gate            — "Verify Text" with Yes / No
- *   editing         — edit Chinese + Pinyin, then Submit or Discard
- *   ready-to-record — read-only review; the recorder unlocks
- *   erroneous       — terminal, undoable
- *   discarded       — terminal, undoable
+ *   gate            - "Verify Text" with Yes / No
+ *   editing         - edit Chinese + Pinyin, then Submit or Discard
+ *   ready-to-record - read-only review; the recorder unlocks
+ *   erroneous       - terminal, undoable
+ *   discarded       - terminal, undoable
  */
 export default function TranscriptVerification({ task, onTaskUpdate }) {
   const [step, setStep] = useState(() => deriveStep(task));
@@ -86,7 +86,7 @@ export default function TranscriptVerification({ task, onTaskUpdate }) {
   const displayChinese = task.correctedChineseTranscript || task.chineseTranscript;
   const displayPinyin = task.correctedPinyin || task.pinyin;
 
-  // Edit tracking — each Chinese character counts as one word.
+  // Edit tracking - each Chinese character counts as one word.
   const chineseEdit = useMemo(
     () => measureEdit(task.chineseTranscript, chineseDraft),
     [task.chineseTranscript, chineseDraft]
@@ -181,6 +181,14 @@ export default function TranscriptVerification({ task, onTaskUpdate }) {
   };
 
   const handleReconsider = async () => {
+    const hasAudio = Boolean(task.audio?.publicId || task.audio?.url);
+    if (hasAudio) {
+      const proceed = window.confirm(
+        "You've already recorded audio for this task. Re-opening verification will require you to record the audio again. Continue?"
+      );
+      if (!proceed) return;
+    }
+
     setReconsidering(true);
     try {
       await reconsiderTask(task._id);
@@ -190,7 +198,14 @@ export default function TranscriptVerification({ task, onTaskUpdate }) {
         pinyinVerified: null,
         isCorrected: false,
         status: "in-progress",
+        // Force the recorder back into empty state so the annotator must
+        // re-record after re-verifying. The server-side audio (if any) is
+        // overwritten on the next upload.
+        ...(hasAudio ? { audio: null } : {}),
       });
+      if (hasAudio) {
+        toast("Please record fresh audio after verifying.");
+      }
       setChineseDraft(task.chineseTranscript);
       setPinyinDraft(task.pinyin);
       setStep("gate");
@@ -253,7 +268,7 @@ export default function TranscriptVerification({ task, onTaskUpdate }) {
         <div className="flex items-center gap-2 text-sm text-emerald-700">
           <CheckCircle2 size={16} />
           <span>
-            {task.isCorrected ? "Correction submitted — recording unlocked." : "Text verified — recording unlocked."}
+            {task.isCorrected ? "Correction submitted - recording unlocked." : "Text verified - recording unlocked."}
           </span>
         </div>
         <ScriptPanels chinese={displayChinese} pinyin={displayPinyin} editable={false} />
@@ -295,7 +310,7 @@ export default function TranscriptVerification({ task, onTaskUpdate }) {
             <span>Pinyin edits: <b>{pinyinEdit.distance}</b></span>
             {heavyEdit && (
               <span className="inline-flex items-center gap-1 text-amber-700 font-semibold">
-                <AlertTriangle size={13} /> Large change — keep edits minor or mark the item erroneous.
+                <AlertTriangle size={13} /> Large change - keep edits minor or mark the item erroneous.
               </span>
             )}
           </div>
@@ -333,7 +348,7 @@ export default function TranscriptVerification({ task, onTaskUpdate }) {
             <form onSubmit={submitErroneous} className="space-y-4">
               <div>
                 <p className="text-sm text-black/70 mb-2">
-                  This marks the item as invalid — it will be excluded from the valid dataset and skipped for recording.
+                  This marks the item as invalid - it will be excluded from the valid dataset and skipped for recording.
                 </p>
                 <textarea
                   className="input resize-none"
@@ -366,7 +381,7 @@ export default function TranscriptVerification({ task, onTaskUpdate }) {
   return (
     <div className="space-y-4">
       <div>
-        <p className="label text-primary-400 mb-1">Step 1 — Verify Text</p>
+        <p className="label text-primary-400 mb-1">Step 1 - Verify Text</p>
         <p className="text-sm text-black/70">
           Does the Chinese text and its Pinyin accurately represent the source? Choose <b>Yes</b> to start recording,
           or <b>No</b> to make minor corrections.
