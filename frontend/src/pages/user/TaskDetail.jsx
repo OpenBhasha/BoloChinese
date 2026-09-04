@@ -5,9 +5,40 @@ import { getTaskDetail, getProjectTasks } from "../../api/user.api";
 import AudioRecorder from "../../components/task/AudioRecorder";
 import TranscriptVerification from "../../components/task/TranscriptVerification";
 import StatusBadge from "../../utils/statusBadge";
-import { ChevronLeft, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, CheckCircle2, SkipBack, SkipForward } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
+
+// Fixed bottom bar with Prev / Next - always visible so annotators can move
+// between tasks during verification, editing, or recording. When a fresh
+// recording is waiting to be sent, Next is hidden so Submit & Next inside
+// the recorder is the only way forward (no redundant navigation).
+function TaskNavBar({ prevTask, nextTask, onNavigate, hideNext }) {
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-primary-700 border-t border-primary-800 z-30">
+      <div className="max-w-5xl mx-auto h-16 px-6 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => (prevTask ? onNavigate(prevTask._id) : toast("This is the first task"))}
+          disabled={!prevTask}
+          className="inline-flex items-center gap-2 recorder-btn-label text-sm font-semibold disabled:opacity-40"
+        >
+          <SkipBack size={22} /> Previous
+        </button>
+        {!hideNext && (
+          <button
+            type="button"
+            onClick={() => (nextTask ? onNavigate(nextTask._id) : toast("You are on the last task"))}
+            disabled={!nextTask}
+            className="inline-flex items-center gap-2 recorder-btn-label text-sm font-semibold disabled:opacity-40"
+          >
+            Next <SkipForward size={22} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function TaskDetail() {
   const { id } = useParams();
@@ -17,7 +48,9 @@ export default function TaskDetail() {
   const [switchingTask, setSwitchingTask] = useState(false);
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [projectTasks, setProjectTasks] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [recorderSubmitting, setRecorderSubmitting] = useState(false);
+  const [pendingRecording, setPendingRecording] = useState(false);
 
   const refreshProjectTasks = async (projectId) => {
     const tasksRes = await getProjectTasks(projectId);
@@ -76,7 +109,7 @@ export default function TaskDetail() {
 
   return (
     <UserLayout>
-      <div className="pb-32 md:pb-0">
+      <div className="pb-24">
       <Link
         to={task?.projectId ? `/user/projects/${task.projectId}` : "/user"}
         className="flex items-center gap-1.5 text-sm text-black/70 hover:text-black mb-6 transition"
@@ -137,10 +170,10 @@ export default function TaskDetail() {
           <AudioRecorder
             task={task}
             taskId={id}
-            prevTask={prevTask}
             nextTask={nextTask}
             onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
             onSubmittingChange={setRecorderSubmitting}
+            onPendingRecordingChange={setPendingRecording}
             onAfterUpload={async ({ background } = {}) => {
               await refreshProjectTasks(task.projectId);
               // A background upload means the user has already navigated to the next
@@ -151,6 +184,13 @@ export default function TaskDetail() {
         )}
       </div>
       </div>
+
+      <TaskNavBar
+        prevTask={prevTask}
+        nextTask={nextTask}
+        onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
+        hideNext={pendingRecording}
+      />
     </UserLayout>
   );
 }
