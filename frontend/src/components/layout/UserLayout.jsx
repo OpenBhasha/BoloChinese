@@ -52,29 +52,28 @@ export default function UserLayout({ children }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Mobile overlay */}
+      {/* Overlay (desktop + mobile — sidebar is drawer-style on every viewport) */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/60 md:hidden"
+          className="fixed inset-0 z-20 bg-black/60"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — hidden by default, revealed via the menu button */}
       <aside className={`
         sidebar-surface fixed inset-y-0 left-0 z-30 w-64 bg-surface-card border-r border-surface-border flex flex-col
         transform transition-transform duration-200 ease-in-out
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        md:relative md:translate-x-0 md:flex
       `}>
         <SidebarContent user={user} onLogout={handleLogout} onNavClick={() => setSidebarOpen(false)} />
       </aside>
 
       {/* Main */}
       <main className="flex-1 overflow-y-auto bg-surface scrollbar-hidden flex flex-col min-w-0">
-        {/* Mobile top bar */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white md:hidden shrink-0">
-          <button onClick={() => setSidebarOpen(true)} className="!text-gray-800 hover:!text-gray-600 transition">
+        {/* Top bar with menu button (all viewports) */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shrink-0">
+          <button onClick={() => setSidebarOpen(true)} className="!text-gray-800 hover:!text-gray-600 transition" aria-label="Open menu">
             <Menu size={22} className="!text-gray-800" />
           </button>
           <div className="flex items-center gap-2">

@@ -6,7 +6,7 @@ import Modal from "../../components/ui/Modal";
 import AudioRecorder from "../../components/task/AudioRecorder";
 import TranscriptVerification from "../../components/task/TranscriptVerification";
 import StatusBadge from "../../utils/statusBadge";
-import { ChevronLeft, CheckCircle2, Flag, Lock } from "lucide-react";
+import { ChevronLeft, CheckCircle2, Flag } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
 
@@ -143,87 +143,75 @@ export default function TaskDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 overflow-x-hidden">
-        {/* Left: Task content */}
-        <div className="space-y-4 min-w-0">
-          <div className="card">
-            <p className="text-sm text-black/70 font-medium mb-2">{completedCount}/{projectTasks.length || 0} Completed</p>
-            <div className="w-full h-2 rounded-full bg-black/10 overflow-hidden mb-3">
-              <div className="h-full bg-primary-700" style={{ width: `${progressPercent}%` }} />
-            </div>
-            <button
-              type="button"
-              onClick={handleSkipTask}
-              disabled={recorderSubmitting || !nextTask}
-              className="btn-secondary text-sm px-4 py-1.5 disabled:opacity-50"
-            >
-              Skip
-            </button>
-            <button
-              type="button"
-              onClick={handleFlagTask}
-              disabled={recorderSubmitting || flagSubmitting}
-              className="btn-secondary text-sm px-4 py-1.5 inline-flex items-center gap-1.5"
-            >
-              <Flag size={14} /> Flag
-            </button>
+      <div className="space-y-4 min-w-0 overflow-x-hidden">
+        <div className="card">
+          <p className="text-sm text-black/70 font-medium mb-2">{completedCount}/{projectTasks.length || 0} Completed</p>
+          <div className="w-full h-2 rounded-full bg-black/10 overflow-hidden mb-3">
+            <div className="h-full bg-primary-700" style={{ width: `${progressPercent}%` }} />
           </div>
-
-          <TranscriptVerification
-            key={task._id}
-            task={task}
-            onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
-          />
-
-          {/* Audio status */}
-          {(task.audio?.publicId || task.audio?.url) && (
-            <div className="card border-emerald-500/30">
-              <p className="label text-emerald-400 mb-2">Audio Recorded</p>
-              <div className="flex items-center gap-3 text-xs text-slate-400">
-                <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                <div>
-                  <p className="text-emerald-300 font-medium">Audio uploaded successfully</p>
-                  <p className="mt-0.5">{(task.audio.fileSizeBytes / 1024).toFixed(1)} KB · {task.audio.sampleRate} Hz · {task.audio.bitDepth}-bit · Mono</p>
-                  <p className="mt-0.5 text-slate-500">{new Date(task.audio.uploadedAt).toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={handleSkipTask}
+            disabled={recorderSubmitting || !nextTask}
+            className="btn-secondary text-sm px-4 py-1.5 disabled:opacity-50"
+          >
+            Skip
+          </button>
+          <button
+            type="button"
+            onClick={handleFlagTask}
+            disabled={recorderSubmitting || flagSubmitting}
+            className="btn-secondary text-sm px-4 py-1.5 inline-flex items-center gap-1.5"
+          >
+            <Flag size={14} /> Flag
+          </button>
         </div>
 
-        {/* Right: Record status — unlocked only after the text is confirmed/corrected */}
-        <div className="space-y-4 min-w-0">
-          {canRecord ? (
-            <AudioRecorder
-              task={task}
-              taskId={id}
-              prevTask={prevTask}
-              nextTask={nextTask}
-              onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
-              onSubmittingChange={setRecorderSubmitting}
-              onAfterUpload={async ({ background } = {}) => {
-                await refreshProjectTasks(task.projectId);
-                // A background upload means the user has already navigated to the next
-                // task by the time this resolves — refetching here would clobber it.
-                if (!background) await fetchTask(id);
-              }}
-            />
-          ) : (
-            <div className="card flex flex-col items-center justify-center text-center py-12">
-              <div className="w-12 h-12 rounded-full bg-black/5 flex items-center justify-center mb-3">
-                <Lock size={20} className="text-black/50" />
+        <TranscriptVerification
+          key={task._id}
+          task={task}
+          onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
+        />
+
+        {/* Audio status */}
+        {(task.audio?.publicId || task.audio?.url) && (
+          <div className="card border-emerald-500/30">
+            <p className="label text-emerald-400 mb-2">Audio Recorded</p>
+            <div className="flex items-center gap-3 text-xs text-slate-400">
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+              <div>
+                <p className="text-emerald-300 font-medium">Audio uploaded successfully</p>
+                <p className="mt-0.5">{(task.audio.fileSizeBytes / 1024).toFixed(1)} KB · {task.audio.sampleRate} Hz · {task.audio.bitDepth}-bit · Mono</p>
+                <p className="mt-0.5 text-slate-500">{new Date(task.audio.uploadedAt).toLocaleString()}</p>
               </div>
-              <p className="label mb-1">Recording Locked</p>
-              <p className="text-sm text-black/60 max-w-xs">
-                {task.discarded?.flagged
-                  ? "This task was discarded. Reopen it to record."
-                  : task.erroneous?.flagged
-                  ? "This item is marked erroneous. Reopen it to record."
-                  : "Complete Step 1 — verify the text (Yes) or submit a correction — to unlock recording."}
-              </p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Recorder — always mounted so prev/next remain available; the mic button
+            itself is hidden while text verification isn't complete. */}
+        <AudioRecorder
+          task={task}
+          taskId={id}
+          prevTask={prevTask}
+          nextTask={nextTask}
+          canRecord={canRecord}
+          lockedReason={
+            task.discarded?.flagged
+              ? "This task was discarded. Reopen it to record."
+              : task.erroneous?.flagged
+              ? "This item is marked erroneous. Reopen it to record."
+              : "Complete Step 1 — verify the text (Yes) or submit a correction — to unlock recording."
+          }
+          onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
+          onSubmittingChange={setRecorderSubmitting}
+          onAfterUpload={async ({ background } = {}) => {
+            await refreshProjectTasks(task.projectId);
+            // A background upload means the user has already navigated to the next
+            // task by the time this resolves — refetching here would clobber it.
+            if (!background) await fetchTask(id);
+          }}
+        />
       </div>
       </div>
 

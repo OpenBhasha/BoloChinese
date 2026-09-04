@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Play, Pause, SkipBack, SkipForward, RefreshCw, AudioLines } from "lucide-react";
+import { Mic, Play, Pause, SkipBack, SkipForward, RefreshCw, AudioLines, Lock } from "lucide-react";
 import { streamAudio, uploadAudio } from "../../api/user.api";
 import { createPcmRecorder, RECORDER_SAMPLE_RATE, RECORDER_BIT_DEPTH } from "../../utils/wavRecorder";
 import toast from "react-hot-toast";
@@ -30,7 +30,7 @@ const MIC_CONSTRAINTS = {
  * Capture is forced to mono 16 kHz 16-bit PCM WAV (see utils/wavRecorder.js) —
  * the backend rejects anything else.
  */
-export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavigate, onAfterUpload, onSubmittingChange }) {
+export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavigate, onAfterUpload, onSubmittingChange, canRecord = true, lockedReason }) {
   const [recording, setRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
@@ -279,6 +279,12 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
       toast.error("Stop recording before moving to next task.");
       return;
     }
+    // While recording is locked (verification step) Next behaves like Skip —
+    // there's no audio to upload, so just navigate.
+    if (!canRecord) {
+      onNavigate(nextTask._id);
+      return;
+    }
     if (audioBlob) {
       const backgroundStarted = await uploadRecordedAudio({ background: true });
       if (!backgroundStarted) return;
@@ -314,6 +320,8 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
 
   // Shared control row (rewind / record / next) — rendered once for the desktop bar
   // and once for the fixed mobile bottom bar, sized differently but never duplicated in logic.
+  // The middle record button is hidden while `canRecord` is false (verification step);
+  // Prev / Next always render so annotators can still move between tasks.
   const renderControlRow = (size) => (
     <>
       <button
@@ -326,14 +334,16 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
         <SkipBack size={size} />
       </button>
 
-      <button
-        type="button"
-        onClick={recording ? stopRecording : startRecording}
-        className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition ${recording ? "bg-red-500 animate-pulse" : "bg-white"}`}
-        aria-label={recording ? "Stop recording" : "Start recording"}
-      >
-        {recording ? renderRecordingWave() : <Mic size={24} className="text-primary-700" />}
-      </button>
+      {canRecord && (
+        <button
+          type="button"
+          onClick={recording ? stopRecording : startRecording}
+          className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition ${recording ? "bg-red-500 animate-pulse" : "bg-white"}`}
+          aria-label={recording ? "Stop recording" : "Start recording"}
+        >
+          {recording ? renderRecordingWave() : <Mic size={24} className="text-primary-700" />}
+        </button>
+      )}
 
       <button
         type="button"
@@ -350,93 +360,111 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
   return (
     <>
       <div className="card">
-        {/* Active input device + enforced format — shown before recording starts */}
-        <div className="rounded-lg border border-primary-100 bg-primary-50/40 px-3 py-2.5 mb-4">
-          <div className="flex items-center justify-between gap-2">
-            <p className="label mb-0">Input Device</p>
-            <button
-              type="button"
-              onClick={detectMicrophone}
-              disabled={detectingDevice || recording}
-              className="text-xs text-primary-700 hover:text-primary-900 inline-flex items-center gap-1 disabled:opacity-50"
-            >
-              <RefreshCw size={12} className={detectingDevice ? "animate-spin" : ""} />
-              {activeDevice ? "Re-check" : "Detect"}
-            </button>
+        {canRecord ? (
+          <>
+            {/* Active input device + enforced format — shown before recording starts */}
+            <div className="rounded-lg border border-primary-100 bg-primary-50/40 px-3 py-2.5 mb-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="label mb-0">Input Device</p>
+                <button
+                  type="button"
+                  onClick={detectMicrophone}
+                  disabled={detectingDevice || recording}
+                  className="text-xs text-primary-700 hover:text-primary-900 inline-flex items-center gap-1 disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={detectingDevice ? "animate-spin" : ""} />
+                  {activeDevice ? "Re-check" : "Detect"}
+                </button>
+              </div>
+              <p className="text-sm text-primary-900 mt-1 flex items-center gap-1.5">
+                <Mic size={13} className="text-primary-500 shrink-0" />
+                <span className="truncate">
+                  {activeDevice?.label
+                    || inputDevices.find((d) => d.label)?.label
+                    || "Not detected yet — click Detect and allow microphone access."}
+                </span>
+              </p>
+              {inputDevices.length > 1 && (
+                <p className="text-[11px] text-primary-400 mt-1">
+                  {inputDevices.length} input devices available. Recording uses your system default; change it in your OS/browser settings.
+                </p>
+              )}
+              <p className="text-[11px] text-primary-500 mt-1 inline-flex items-center gap-1">
+                <AudioLines size={12} /> Enforced format: {RECORDER_SAMPLE_RATE / 1000} kHz · {RECORDER_BIT_DEPTH}-bit PCM · mono
+              </p>
+            </div>
+
+            <p className="label mb-3">Recording Status</p>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <p className="text-sm text-slate-400">
+                {recording ? "Recording in progress..." : audioBlob ? "New recording ready to upload." : "Use recorder controls below."}
+              </p>
+              {recording && (
+                <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-1">
+                  {formatTime(recordingElapsed)}
+                </span>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center shrink-0">
+              <Lock size={18} className="text-black/50" />
+            </div>
+            <div className="min-w-0">
+              <p className="label mb-1">Recording Locked</p>
+              <p className="text-sm text-black/60">{lockedReason}</p>
+            </div>
           </div>
-          <p className="text-sm text-primary-900 mt-1 flex items-center gap-1.5">
-            <Mic size={13} className="text-primary-500 shrink-0" />
-            <span className="truncate">
-              {activeDevice?.label
-                || inputDevices.find((d) => d.label)?.label
-                || "Not detected yet — click Detect and allow microphone access."}
-            </span>
-          </p>
-          {inputDevices.length > 1 && (
-            <p className="text-[11px] text-primary-400 mt-1">
-              {inputDevices.length} input devices available. Recording uses your system default; change it in your OS/browser settings.
-            </p>
-          )}
-          <p className="text-[11px] text-primary-500 mt-1 inline-flex items-center gap-1">
-            <AudioLines size={12} /> Enforced format: {RECORDER_SAMPLE_RATE / 1000} kHz · {RECORDER_BIT_DEPTH}-bit PCM · mono
-          </p>
-        </div>
+        )}
 
-        <p className="label mb-3">Recording Status</p>
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <p className="text-sm text-slate-400">
-            {recording ? "Recording in progress..." : audioBlob ? "New recording ready to upload." : "Use recorder controls below."}
-          </p>
-          {recording && (
-            <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-1">
-              {formatTime(recordingElapsed)}
-            </span>
-          )}
-        </div>
-
-        <div className="hidden md:flex items-center justify-between rounded-2xl bg-primary-700 px-5 py-4 mb-4">
+        <div className="hidden md:flex items-center justify-center gap-10 rounded-2xl bg-primary-700 px-5 py-4 mb-4">
           {renderControlRow(26)}
         </div>
 
-        <audio
-          ref={audioRef}
-          src={audioUrl || undefined}
-          onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
-          onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
-          onEnded={() => setPlaying(false)}
-          className="hidden"
-        />
-        <div className="flex items-center gap-3 mb-4">
-          <button
-            type="button"
-            onClick={togglePlayback}
-            className="text-primary-900"
-            aria-label={playing ? "Pause audio" : "Play audio"}
-          >
-            {playing ? <Pause size={22} /> : <Play size={22} />}
-          </button>
-          <input
-            type="range"
-            min="0"
-            max={duration || 0}
-            step="0.01"
-            value={currentTime}
-            onChange={(e) => {
-              const value = Number(e.target.value);
-              if (!audioRef.current) return;
-              audioRef.current.currentTime = value;
-              setCurrentTime(value);
-            }}
-            className="w-full accent-primary-700"
-          />
-          <span className="text-xs text-primary-500 min-w-[76px] text-right">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </span>
-        </div>
+        {canRecord && (
+          <>
+            <audio
+              ref={audioRef}
+              src={audioUrl || undefined}
+              onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+              onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
+              onEnded={() => setPlaying(false)}
+              className="hidden"
+            />
+            <div className="flex items-center gap-3 mb-4">
+              <button
+                type="button"
+                onClick={togglePlayback}
+                className="text-primary-900"
+                aria-label={playing ? "Pause audio" : "Play audio"}
+              >
+                {playing ? <Pause size={22} /> : <Play size={22} />}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max={duration || 0}
+                step="0.01"
+                value={currentTime}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  if (!audioRef.current) return;
+                  audioRef.current.currentTime = value;
+                  setCurrentTime(value);
+                }}
+                className="w-full accent-primary-700"
+              />
+              <span className="text-xs text-primary-500 min-w-[76px] text-right">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+            </div>
 
-        <div className="text-xs text-black/70">
-          Use Next in the recorder controls to auto-submit your recording and move to the next task.
-        </div>
+            <div className="text-xs text-black/70">
+              Use Next in the recorder controls to auto-submit your recording and move to the next task.
+            </div>
+          </>
+        )}
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-primary-700 border-t border-primary-800 z-30 md:hidden">
