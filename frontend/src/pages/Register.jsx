@@ -58,10 +58,12 @@ export default function Register() {
                 className="input" placeholder="you@example.com" required />
             </div>
             <div>
-              <label className="label">Phone Number</label>
+              <label className="label">Phone Number <span className="text-red-500">*</span></label>
               <input name="phone" type="tel" value={form.phone} onChange={handleChange}
-                className="input" placeholder="+1 555 123 4567" />
-              <p className="text-xs text-slate-500 mt-1">Helps us corroborate your identity (recommended).</p>
+                className="input" placeholder="+86 138 0013 8000" required />
+              <p className="text-xs text-slate-500 mt-1">
+                Include your country code (e.g. +86, +1). Used to verify your identity and prevent duplicate accounts.
+              </p>
             </div>
             <div>
               <label className="label">Role</label>

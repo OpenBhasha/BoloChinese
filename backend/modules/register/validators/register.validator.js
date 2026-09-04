@@ -1,4 +1,5 @@
 const { body } = require("express-validator");
+const { parsePhoneNumberFromString } = require("libphonenumber-js");
 
 const registerValidator = [
   body("name")
@@ -13,11 +14,25 @@ const registerValidator = [
     .isEmail().withMessage("Please provide a valid email address")
     .normalizeEmail(),
 
+  // Phone is required so every account has a corroborating identifier - it's
+  // what makes duplicate-account and anonymous-account detection possible.
   body("phone")
-    .optional({ checkFalsy: true })
     .trim()
-    .isLength({ min: 6, max: 30 }).withMessage("Phone number must be between 6 and 30 characters")
-    .matches(/^[+\d][\d\s()-]{5,}$/).withMessage("Please provide a valid phone number"),
+    .notEmpty().withMessage("Phone number is required")
+    .isLength({ max: 30 }).withMessage("Phone number is too long")
+    .custom((value) => {
+      const parsed = parsePhoneNumberFromString(value);
+      if (!parsed || !parsed.isValid()) {
+        throw new Error("Please provide a valid phone number in international format, e.g. +14155552671");
+      }
+      return true;
+    })
+    // Normalize to E.164 so the same number always dedupes to one value
+    // regardless of spacing/punctuation used at input time.
+    .customSanitizer((value) => {
+      const parsed = parsePhoneNumberFromString(value);
+      return parsed && parsed.isValid() ? parsed.number : value;
+    }),
 
   body("role")
     .trim()

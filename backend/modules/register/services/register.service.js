@@ -1,4 +1,4 @@
-const { createUser, findUserByEmail, findUserByUsername } = require("../dao/register.dao");
+const { createUser, findUserByEmail, findUserByUsername, findUserByPhone } = require("../dao/register.dao");
 const logger = require("../../../logging/logger");
 
 // ─── Username generation ──────────────────────────────────────────────────────
@@ -34,53 +34,85 @@ const PLACEHOLDER_NAMES = new Set([
   "noname", "nobody", "guest", "demo", "sample", "foo", "bar", "foobar",
 ]);
 
-const detectIdentityIssue = ({ name = "", phone = "" }) => {
+// Unambiguous fakes (placeholder words, no letters at all, a single repeated
+// character, a name too short to be a name) are rejected outright - letting
+// these through would defeat the point of asking for a real name. A bare
+// single word is only a soft signal: many cultures use mononyms, so that
+// case is flagged for admin review rather than blocked.
+const detectIdentityIssue = ({ name = "" }) => {
   const trimmed = String(name).trim();
   const compact = trimmed.toLowerCase().replace(/[^a-z]/g, "");
 
   if (trimmed.length < 3) {
-    return { flagged: true, reason: "Name is too short to be a real full name." };
+    return { blocked: true, flagged: true, reason: "Name is too short to be a real full name." };
   }
   if (!/[a-zA-Z]/.test(trimmed)) {
-    return { flagged: true, reason: "Name contains no letters." };
+    return { blocked: true, flagged: true, reason: "Name contains no letters." };
   }
   if (PLACEHOLDER_NAMES.has(compact)) {
-    return { flagged: true, reason: "Name looks like a placeholder / anonymous value." };
+    return { blocked: true, flagged: true, reason: "Name looks like a placeholder / anonymous value." };
   }
   if (compact.length >= 2 && /^(.)\1+$/.test(compact)) {
-    return { flagged: true, reason: "Name is a single repeated character." };
+    return { blocked: true, flagged: true, reason: "Name is a single repeated character." };
   }
   if (!trimmed.includes(" ") && trimmed.length < 5) {
-    return { flagged: true, reason: "Name does not look like a full name." };
+    return { blocked: false, flagged: true, reason: "Name does not look like a full name." };
   }
-  if (!phone) {
-    return { flagged: true, reason: "No phone number supplied - identity could not be corroborated." };
-  }
-  return { flagged: false, reason: "" };
+  return { blocked: false, flagged: false, reason: "" };
 };
 
 const registerUser = async ({ name, email, role, password, phone }) => {
   // Check duplicate email
-  const existing = await findUserByEmail(email);
-  if (existing) {
+  const existingEmail = await findUserByEmail(email);
+  if (existingEmail) {
     const err = new Error("Email is already registered.");
     err.statusCode = 409;
     throw err;
   }
 
-  const username = await generateUniqueUsername(name);
-  const identity = detectIdentityIssue({ name, phone });
+  // Check duplicate phone - the same person re-registering under a new email
+  // is the most common route to a duplicate account, so the phone (already
+  // normalized to E.164 by the validator) must also be unique.
+  const existingPhone = await findUserByPhone(phone);
+  if (existingPhone) {
+    const err = new Error("Phone number is already registered.");
+    err.statusCode = 409;
+    throw err;
+  }
 
-  const user = await createUser({
-    name,
-    email,
-    role,
-    password,
-    phone: phone || "",
-    username,
-    identityFlagged: identity.flagged,
-    identityFlagReason: identity.reason,
-  });
+  const identity = detectIdentityIssue({ name });
+  if (identity.blocked) {
+    const err = new Error(`Registration rejected: ${identity.reason}`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const username = await generateUniqueUsername(name);
+
+  let user;
+  try {
+    user = await createUser({
+      name,
+      email,
+      role,
+      password,
+      phone,
+      username,
+      identityFlagged: identity.flagged,
+      identityFlagReason: identity.reason,
+    });
+  } catch (mongoErr) {
+    // Guards the race window between the pre-checks above and the insert
+    // (e.g. two concurrent requests with the same email/phone).
+    if (mongoErr.code === 11000) {
+      const field = Object.keys(mongoErr.keyPattern || {})[0] || "field";
+      const label = field === "phone" ? "Phone number" : field === "email" ? "Email" : "Value";
+      const err = new Error(`${label} is already registered.`);
+      err.statusCode = 409;
+      throw err;
+    }
+    throw mongoErr;
+  }
 
   logger.info(
     `New user registered: ${user.email} (role: ${user.role}, username: ${user.username})` +
