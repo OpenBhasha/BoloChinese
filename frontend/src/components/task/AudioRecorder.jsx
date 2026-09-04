@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Play, Pause, SkipBack, SkipForward, RefreshCw, AudioLines, Lock } from "lucide-react";
+import { Mic, Play, Pause, SkipBack, SkipForward, RotateCcw, Send } from "lucide-react";
 import { streamAudio, uploadAudio } from "../../api/user.api";
-import { createPcmRecorder, RECORDER_SAMPLE_RATE, RECORDER_BIT_DEPTH } from "../../utils/wavRecorder";
+import { createPcmRecorder } from "../../utils/wavRecorder";
 import toast from "react-hot-toast";
 
 const formatTime = (seconds) => {
@@ -14,7 +14,7 @@ const formatTime = (seconds) => {
 const MIC_CONSTRAINTS = {
   audio: {
     channelCount: 1,
-    sampleRate: RECORDER_SAMPLE_RATE,
+    sampleRate: 16000,
     echoCancellation: true,
     noiseSuppression: true,
     autoGainControl: true,
@@ -24,13 +24,15 @@ const MIC_CONSTRAINTS = {
 /**
  * Shared audio recorder used by every task type: record/stop, play back the
  * recording (or the previously submitted audio), and step to the prev/next
- * task in the project, uploading in the background when moving forward with
- * an unsaved recording.
+ * task in the project.
  *
  * Capture is forced to mono 16 kHz 16-bit PCM WAV (see utils/wavRecorder.js) -
  * the backend rejects anything else.
+ *
+ * Only mounted once the annotator has passed the verification step - see
+ * `canRecord` in TaskDetail.
  */
-export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavigate, onAfterUpload, onSubmittingChange, canRecord = true, lockedReason }) {
+export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavigate, onAfterUpload, onSubmittingChange }) {
   const [recording, setRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
@@ -39,11 +41,6 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
   const [currentTime, setCurrentTime] = useState(0);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-
-  // Input-device awareness - shown to the user before they start recording.
-  const [inputDevices, setInputDevices] = useState([]);
-  const [activeDevice, setActiveDevice] = useState(null); // { label, deviceId }
-  const [detectingDevice, setDetectingDevice] = useState(false);
 
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -54,53 +51,6 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
   useEffect(() => {
     onSubmittingChange?.(submitting);
   }, [submitting, onSubmittingChange]);
-
-  // ─── Input device discovery ────────────────────────────────────────────────
-  const refreshDeviceList = async () => {
-    if (!navigator.mediaDevices?.enumerateDevices) return [];
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const inputs = devices.filter((d) => d.kind === "audioinput");
-      setInputDevices(inputs);
-      return inputs;
-    } catch {
-      return [];
-    }
-  };
-
-  useEffect(() => {
-    refreshDeviceList();
-    const handler = () => refreshDeviceList();
-    navigator.mediaDevices?.addEventListener?.("devicechange", handler);
-    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", handler);
-  }, []);
-
-  const resolveActiveDevice = (stream, inputs) => {
-    const track = stream.getAudioTracks()[0];
-    if (!track) return null;
-    const settings = track.getSettings?.() || {};
-    const match = (inputs || []).find((d) => d.deviceId && d.deviceId === settings.deviceId);
-    return {
-      deviceId: settings.deviceId || "",
-      label: match?.label || track.label || "System default microphone",
-    };
-  };
-
-  // Prompt for mic access purely to reveal the active input device (labels are
-  // hidden until permission is granted), then release it.
-  const detectMicrophone = async () => {
-    setDetectingDevice(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
-      const inputs = await refreshDeviceList();
-      setActiveDevice(resolveActiveDevice(stream, inputs));
-      stream.getTracks().forEach((t) => t.stop());
-    } catch {
-      toast.error("Microphone access denied. Please allow mic access to record.");
-    } finally {
-      setDetectingDevice(false);
-    }
-  };
 
   // Load the recorded/submitted audio whenever the task changes, and clear local state.
   useEffect(() => {
@@ -172,10 +122,6 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
     try {
       const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
       streamRef.current = stream;
-
-      const inputs = await refreshDeviceList();
-      setActiveDevice(resolveActiveDevice(stream, inputs));
-
       recorderRef.current = createPcmRecorder(stream);
       setRecordingElapsed(0);
       recordingStartedAtRef.current = Date.now();
@@ -270,13 +216,37 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
     }
   };
 
-  // Terminal/finished states where the recorder has nothing left to gate on:
-  // - completed: audio uploaded
-  // - erroneous / discarded: text step is terminal (canRecord is false)
-  // In all three, prev/next navigate freely with no toast.
+  const handleSubmitAndNext = async () => {
+    if (!audioBlob) {
+      toast.error("Please record audio first.");
+      return;
+    }
+    if (nextTask) {
+      const started = await uploadRecordedAudio({ background: true });
+      if (!started) return;
+      toast("Uploading audio in background. Moving to next task...");
+      onNavigate(nextTask._id);
+    } else {
+      // Last task - foreground upload and stay put so the annotator sees the result.
+      await uploadRecordedAudio({ background: false });
+    }
+  };
+
+  const handleRetry = () => {
+    // Drop the fresh recording; the mic control returns so the annotator can record again.
+    setAudioBlob(null);
+    setAudioUrl((prev) => {
+      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+  };
+
+  // Free navigation once the task is finished (audio uploaded, completed, or discarded).
   const isTaskFinished =
     task?.status === "completed" ||
-    task?.status === "erroneous" ||
     task?.status === "discarded" ||
     Boolean(task?.audio?.publicId || task?.audio?.url);
 
@@ -289,15 +259,13 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
       toast.error("Stop recording before moving to next task.");
       return;
     }
-    // Verification step or a terminal state: nothing to upload, just navigate.
-    if (!canRecord || isTaskFinished) {
-      onNavigate(nextTask._id);
+    if (audioBlob) {
+      // The dedicated "Submit & Next" button drives this; the plain Next
+      // shouldn't skip past an unsent recording.
+      toast("Use Submit & Next to send your recording.");
       return;
     }
-    if (audioBlob) {
-      const backgroundStarted = await uploadRecordedAudio({ background: true });
-      if (!backgroundStarted) return;
-      toast("Uploading audio in background. Moving to next task...");
+    if (isTaskFinished) {
       onNavigate(nextTask._id);
       return;
     }
@@ -323,158 +291,147 @@ export default function AudioRecorder({ task, taskId, prevTask, nextTask, onNavi
     }
   };
 
-  // Shared control row (rewind / record / next) - rendered once for the desktop bar
-  // and once for the fixed mobile bottom bar, sized differently but never duplicated in logic.
-  // The middle record button is hidden while `canRecord` is false (verification step);
-  // Prev / Next always render so annotators can still move between tasks.
-  const renderControlRow = (size) => (
-    <>
-      <button
-        type="button"
-        onClick={handlePrev}
-        className="w-12 h-12 rounded-full bg-white text-primary-700 flex items-center justify-center disabled:opacity-40"
-        disabled={!prevTask}
-        aria-label="Previous task"
-      >
-        <SkipBack size={size} />
-      </button>
+  // Prev / Record-Stop / Next row - used by the desktop card and the fixed mobile bar.
+  // When a fresh recording is waiting to be submitted, the middle button is replaced
+  // by Retry + Submit-and-Next so the annotator can review before sending.
+  const renderControlRow = (size, { showLabels = false } = {}) => {
+    const btnLabel = (text) =>
+      showLabels ? <span className="text-[11px] font-medium mt-1 text-white">{text}</span> : null;
 
-      {canRecord && (
-        <button
-          type="button"
-          onClick={recording ? stopRecording : startRecording}
-          className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition ${recording ? "bg-red-500 animate-pulse" : "bg-white"}`}
-          aria-label={recording ? "Stop recording" : "Start recording"}
-        >
-          {recording ? renderRecordingWave() : <Mic size={24} className="text-primary-700" />}
-        </button>
-      )}
+    return (
+      <div className="flex items-end justify-center gap-6 md:gap-10">
+        <div className="flex flex-col items-center">
+          <button
+            type="button"
+            onClick={handlePrev}
+            className="w-12 h-12 rounded-full bg-white text-primary-700 flex items-center justify-center disabled:opacity-40"
+            disabled={!prevTask}
+            aria-label="Previous task"
+          >
+            <SkipBack size={size} />
+          </button>
+          {btnLabel("Previous")}
+        </div>
 
-      <button
-        type="button"
-        onClick={handleNext}
-        className="w-12 h-12 rounded-full bg-white text-primary-700 flex items-center justify-center disabled:opacity-40"
-        disabled={!nextTask || submitting}
-        aria-label="Next task"
-      >
-        <SkipForward size={size} />
-      </button>
-    </>
-  );
+        {audioBlob ? (
+          <>
+            <div className="flex flex-col items-center">
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="w-16 h-16 rounded-full bg-white text-primary-700 flex items-center justify-center shadow-lg"
+                aria-label="Retry recording"
+              >
+                <RotateCcw size={22} />
+              </button>
+              {btnLabel("Retry")}
+            </div>
+            <div className="flex flex-col items-center">
+              <button
+                type="button"
+                onClick={handleSubmitAndNext}
+                disabled={submitting}
+                className="w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg disabled:opacity-60"
+                aria-label={nextTask ? "Submit recording and go to next task" : "Submit recording"}
+              >
+                <Send size={22} />
+              </button>
+              {btnLabel(nextTask ? "Submit & Next" : "Submit")}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center">
+            <button
+              type="button"
+              onClick={recording ? stopRecording : startRecording}
+              className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition ${recording ? "bg-red-500 animate-pulse" : "bg-white"}`}
+              aria-label={recording ? "Stop recording" : "Start recording"}
+            >
+              {recording ? renderRecordingWave() : <Mic size={24} className="text-primary-700" />}
+            </button>
+            {btnLabel(recording ? "Stop" : "Record")}
+          </div>
+        )}
+
+        <div className="flex flex-col items-center">
+          <button
+            type="button"
+            onClick={handleNext}
+            className="w-12 h-12 rounded-full bg-white text-primary-700 flex items-center justify-center disabled:opacity-40"
+            disabled={!nextTask || submitting}
+            aria-label="Next task"
+          >
+            <SkipForward size={size} />
+          </button>
+          {btnLabel("Next")}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
       <div className="card">
-        {canRecord ? (
-          <>
-            {/* Active input device + enforced format - shown before recording starts */}
-            <div className="rounded-lg border border-primary-100 bg-primary-50/40 px-3 py-2.5 mb-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="label mb-0">Input Device</p>
-                <button
-                  type="button"
-                  onClick={detectMicrophone}
-                  disabled={detectingDevice || recording}
-                  className="text-xs text-primary-700 hover:text-primary-900 inline-flex items-center gap-1 disabled:opacity-50"
-                >
-                  <RefreshCw size={12} className={detectingDevice ? "animate-spin" : ""} />
-                  {activeDevice ? "Re-check" : "Detect"}
-                </button>
-              </div>
-              <p className="text-sm text-primary-900 mt-1 flex items-center gap-1.5">
-                <Mic size={13} className="text-primary-500 shrink-0" />
-                <span className="truncate">
-                  {activeDevice?.label
-                    || inputDevices.find((d) => d.label)?.label
-                    || "Not detected yet - click Detect and allow microphone access."}
-                </span>
-              </p>
-              {inputDevices.length > 1 && (
-                <p className="text-[11px] text-primary-400 mt-1">
-                  {inputDevices.length} input devices available. Recording uses your system default; change it in your OS/browser settings.
-                </p>
-              )}
-              <p className="text-[11px] text-primary-500 mt-1 inline-flex items-center gap-1">
-                <AudioLines size={12} /> Enforced format: {RECORDER_SAMPLE_RATE / 1000} kHz · {RECORDER_BIT_DEPTH}-bit PCM · mono
-              </p>
-            </div>
-
-            <p className="label mb-3">Recording Status</p>
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <p className="text-sm text-slate-400">
-                {recording ? "Recording in progress..." : audioBlob ? "New recording ready to upload." : "Use recorder controls below."}
-              </p>
-              {recording && (
-                <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-1">
-                  {formatTime(recordingElapsed)}
-                </span>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="flex items-start gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center shrink-0">
-              <Lock size={18} className="text-black/50" />
-            </div>
-            <div className="min-w-0">
-              <p className="label mb-1">Recording Locked</p>
-              <p className="text-sm text-black/60">{lockedReason}</p>
-            </div>
-          </div>
-        )}
-
-        <div className="hidden md:flex items-center justify-center gap-10 rounded-2xl bg-primary-700 px-5 py-4 mb-4">
-          {renderControlRow(26)}
+        <p className="label mb-3">Recording Status</p>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <p className="text-sm text-slate-400">
+            {recording
+              ? "Recording in progress..."
+              : audioBlob
+              ? "New recording ready. Review, then Submit & Next or Retry."
+              : "Use the mic below to record."}
+          </p>
+          {recording && (
+            <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-1">
+              {formatTime(recordingElapsed)}
+            </span>
+          )}
         </div>
 
-        {canRecord && (
-          <>
-            <audio
-              ref={audioRef}
-              src={audioUrl || undefined}
-              onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
-              onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
-              onEnded={() => setPlaying(false)}
-              className="hidden"
-            />
-            <div className="flex items-center gap-3 mb-4">
-              <button
-                type="button"
-                onClick={togglePlayback}
-                className="text-primary-900"
-                aria-label={playing ? "Pause audio" : "Play audio"}
-              >
-                {playing ? <Pause size={22} /> : <Play size={22} />}
-              </button>
-              <input
-                type="range"
-                min="0"
-                max={duration || 0}
-                step="0.01"
-                value={currentTime}
-                onChange={(e) => {
-                  const value = Number(e.target.value);
-                  if (!audioRef.current) return;
-                  audioRef.current.currentTime = value;
-                  setCurrentTime(value);
-                }}
-                className="w-full accent-primary-700"
-              />
-              <span className="text-xs text-primary-500 min-w-[76px] text-right">
-                {formatTime(currentTime)} / {formatTime(duration)}
-              </span>
-            </div>
+        <div className="hidden md:block rounded-2xl bg-primary-700 px-5 py-4 mb-4">
+          {renderControlRow(26, { showLabels: true })}
+        </div>
 
-            <div className="text-xs text-black/70">
-              Use Next in the recorder controls to auto-submit your recording and move to the next task.
-            </div>
-          </>
-        )}
+        <audio
+          ref={audioRef}
+          src={audioUrl || undefined}
+          onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+          onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
+          onEnded={() => setPlaying(false)}
+          className="hidden"
+        />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={togglePlayback}
+            className="text-primary-900"
+            aria-label={playing ? "Pause audio" : "Play audio"}
+          >
+            {playing ? <Pause size={22} /> : <Play size={22} />}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max={duration || 0}
+            step="0.01"
+            value={currentTime}
+            onChange={(e) => {
+              const value = Number(e.target.value);
+              if (!audioRef.current) return;
+              audioRef.current.currentTime = value;
+              setCurrentTime(value);
+            }}
+            className="w-full accent-primary-700"
+          />
+          <span className="text-xs text-primary-500 min-w-[76px] text-right">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </span>
+        </div>
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-primary-700 border-t border-primary-800 z-30 md:hidden">
-        <div className="max-w-5xl mx-auto h-20 px-4 flex items-center justify-center gap-10 md:gap-14">
-          {renderControlRow(28)}
+        <div className="max-w-5xl mx-auto h-24 px-4 flex items-center justify-center">
+          {renderControlRow(28, { showLabels: true })}
         </div>
       </div>
     </>

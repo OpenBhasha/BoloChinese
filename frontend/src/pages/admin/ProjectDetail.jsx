@@ -671,7 +671,7 @@ export default function ProjectDetail() {
                 disabled={bulkUploading}
                 title="Upload an Excel or CSV file with dialogue_id, chinese_transcript, and pinyin columns"
               >
-                <Upload size={16} /> {bulkUploading ? "Uploading..." : "Upload Dialogues"}
+                <Upload size={16} /> {bulkUploading ? "Uploading..." : "Upload Tasks"}
               </button>
               <button
                 onClick={handleDownloadTemplate}

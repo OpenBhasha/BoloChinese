@@ -55,11 +55,10 @@ export default function TaskDetail() {
   }, [id]);
 
   // The recording screen is only available after the user confirms the text
-  // (Yes) or submits a correction (Submit). Erroneous / discarded items stay locked.
+  // (Yes) or submits a correction (Submit). Discarded items stay locked.
   const canRecord = Boolean(
     task &&
       (task.pinyinVerified === true || task.isCorrected) &&
-      !task.erroneous?.flagged &&
       !task.discarded?.flagged
   );
 
@@ -113,6 +112,8 @@ export default function TaskDetail() {
         <TranscriptVerification
           key={task._id}
           task={task}
+          nextTask={nextTask}
+          onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
           onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
         />
 
@@ -131,30 +132,23 @@ export default function TaskDetail() {
           </div>
         )}
 
-        {/* Recorder - always mounted so prev/next remain available; the mic button
-            itself is hidden while text verification isn't complete. */}
-        <AudioRecorder
-          task={task}
-          taskId={id}
-          prevTask={prevTask}
-          nextTask={nextTask}
-          canRecord={canRecord}
-          lockedReason={
-            task.discarded?.flagged
-              ? "This task was discarded. Reopen it to record."
-              : task.erroneous?.flagged
-              ? "This item is marked erroneous. Reopen it to record."
-              : "Complete Step 1 - verify the text (Yes) or submit a correction - to unlock recording."
-          }
-          onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
-          onSubmittingChange={setRecorderSubmitting}
-          onAfterUpload={async ({ background } = {}) => {
-            await refreshProjectTasks(task.projectId);
-            // A background upload means the user has already navigated to the next
-            // task by the time this resolves - refetching here would clobber it.
-            if (!background) await fetchTask(id);
-          }}
-        />
+        {/* Recorder - only rendered once text verification is complete. */}
+        {canRecord && (
+          <AudioRecorder
+            task={task}
+            taskId={id}
+            prevTask={prevTask}
+            nextTask={nextTask}
+            onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
+            onSubmittingChange={setRecorderSubmitting}
+            onAfterUpload={async ({ background } = {}) => {
+              await refreshProjectTasks(task.projectId);
+              // A background upload means the user has already navigated to the next
+              // task by the time this resolves - refetching here would clobber it.
+              if (!background) await fetchTask(id);
+            }}
+          />
+        )}
       </div>
       </div>
     </UserLayout>
