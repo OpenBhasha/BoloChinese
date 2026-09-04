@@ -313,7 +313,7 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
           type="button"
           onClick={() => handleVerify(true)}
           disabled={verifying}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-green-600 hover:bg-green-700 !text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Yes
         </button>
@@ -321,7 +321,7 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
           type="button"
           onClick={() => handleVerify(false)}
           disabled={verifying}
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-red-600 hover:bg-red-700 !text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           No
         </button>
