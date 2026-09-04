@@ -21,7 +21,7 @@ export default function AdminDashboard() {
   return (
     <AdminLayout>
       <h1 className="text-xl sm:text-2xl font-bold text-primary-900 mb-1">Dashboard</h1>
-      <p className="text-primary-400 text-sm mb-6 sm:mb-8">Overview of your BoloChinese platform</p>
+      <p className="text-primary-400 text-sm mb-6 sm:mb-8">Overview of your Bolo platform</p>
 
       {loading ? <PageSpinner /> : (
         <>

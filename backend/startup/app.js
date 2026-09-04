@@ -35,7 +35,7 @@ const createApp = () => {
 
   // Health check
   app.get("/health", (req, res) => {
-    res.json({ success: true, message: "BoloChinese API is running", timestamp: new Date().toISOString() });
+    res.json({ success: true, message: "Bolo API is running", timestamp: new Date().toISOString() });
   });
 
   // All API routes

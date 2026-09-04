@@ -602,7 +602,7 @@ const exportResults = async ({ projectId, userId } = {}) => {
   const stamp = new Date().toISOString().slice(0, 10);
 
   logger.info(`Results exported | scope: ${scopeLabel} | rows: ${submissions.length}`);
-  return { filename: `bolochinese-results-${scopeLabel}-${stamp}.csv`, csv, rowCount: submissions.length };
+  return { filename: `bolo-results-${scopeLabel}-${stamp}.csv`, csv, rowCount: submissions.length };
 };
 
 module.exports = {

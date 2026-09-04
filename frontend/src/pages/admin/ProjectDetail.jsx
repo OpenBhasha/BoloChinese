@@ -552,7 +552,7 @@ export default function ProjectDetail() {
     try {
       const response = await exportProjectResults(id);
       const name = response.headers?.["content-disposition"]?.match(/filename="?([^"]+)"?/)?.[1]
-        || `bolochinese-results-${id}.csv`;
+        || `bolo-results-${id}.csv`;
       downloadBlob(response.data, name);
       toast.success("Results exported (partial results included).");
     } catch (err) {

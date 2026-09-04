@@ -1,6 +1,6 @@
-# BoloChinese
+# Bolo
 
-BoloChinese is a full-stack platform for verifying Chinese transcripts and their Pinyin, correcting them where needed, and collecting matching audio recordings from individual users.
+Bolo is a full-stack platform for verifying Chinese transcripts and their Pinyin, correcting them where needed, and collecting matching audio recordings from individual users.
 
 - Admin users can create projects, bulk-import dialogue transcripts, verify users, and review submissions (including corrected and erroneous items).
 - Regular users work through their assigned dialogues: verify the Pinyin against the Chinese transcript, correct it when needed (or mark it erroneous/invalid), and record matching audio.
@@ -8,7 +8,7 @@ BoloChinese is a full-stack platform for verifying Chinese transcripts and their
 ## Monorepo Structure
 
 ```text
-BoloChinese/
+Bolo/
   backend/   Express API + MongoDB
   frontend/  React (Vite) application
 ```
@@ -45,7 +45,7 @@ Copy `backend/.env.example` to `backend/.env` and fill in your values:
 
 ```env
 PORT=5000
-MONGO_URI=mongodb://localhost:27017/bolochinese
+MONGO_URI=mongodb://localhost:27017/bolo
 JWT_SECRET=replace_with_a_strong_secret
 JWT_EXPIRES_IN=7d
 NODE_ENV=development
@@ -56,7 +56,7 @@ CLOUDINARY_API_SECRET=your_api_secret
 
 # First admin, seeded automatically on server startup
 ADMIN_NAME=Super Admin
-ADMIN_EMAIL=admin@bolochinese.com
+ADMIN_EMAIL=admin@bolo.com
 ADMIN_PASSWORD=replace_with_a_strong_password
 SEED_ADMIN=true
 ```

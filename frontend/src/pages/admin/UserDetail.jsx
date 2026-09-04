@@ -28,7 +28,7 @@ export default function UserDetail() {
     try {
       const res = await exportUserResults(id);
       const name = res.headers?.["content-disposition"]?.match(/filename="?([^"]+)"?/)?.[1]
-        || `bolochinese-results-${id}.csv`;
+        || `bolo-results-${id}.csv`;
       downloadBlob(res.data, name);
       toast.success("Export downloaded.");
     } catch {

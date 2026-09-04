@@ -17,7 +17,7 @@ function SidebarContent({ user, onLogout, onNavClick }) {
       <div className="p-6 border-b border-white/20">
         <div className="flex items-center gap-2">
           <Mic2 className="text-white" size={22} />
-          <span className="font-bold text-lg text-white tracking-tight">BoloChinese</span>
+          <span className="font-bold text-lg text-white tracking-tight">Bolo</span>
         </div>
         <span className="text-xs text-white/60 font-semibold uppercase tracking-widest mt-0.5 block">Admin Panel</span>
       </div>
@@ -86,7 +86,7 @@ export default function AdminLayout({ children }) {
           </button>
           <div className="flex items-center gap-2">
             <Mic2 className="text-gray-800" size={18} />
-            <span className="font-bold text-gray-800 tracking-tight">BoloChinese</span>
+            <span className="font-bold text-gray-800 tracking-tight">Bolo</span>
           </div>
           <span className="text-xs text-gray-600 font-semibold uppercase tracking-widest ml-1">Admin</span>
         </div>
