@@ -23,7 +23,7 @@ const generateUniqueUsername = async (name) => {
     if (!taken) return candidate;
   }
 
-  // Extremely unlikely fallback — a random suffix.
+  // Extremely unlikely fallback - a random suffix.
   return `${base}${Date.now().toString(36)}`;
 };
 
@@ -54,7 +54,7 @@ const detectIdentityIssue = ({ name = "", phone = "" }) => {
     return { flagged: true, reason: "Name does not look like a full name." };
   }
   if (!phone) {
-    return { flagged: true, reason: "No phone number supplied — identity could not be corroborated." };
+    return { flagged: true, reason: "No phone number supplied - identity could not be corroborated." };
   }
   return { flagged: false, reason: "" };
 };
@@ -84,7 +84,7 @@ const registerUser = async ({ name, email, role, password, phone }) => {
 
   logger.info(
     `New user registered: ${user.email} (role: ${user.role}, username: ${user.username})` +
-      (identity.flagged ? ` — identity flagged: ${identity.reason}` : "")
+      (identity.flagged ? ` - identity flagged: ${identity.reason}` : "")
   );
 
   return {

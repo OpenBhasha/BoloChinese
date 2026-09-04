@@ -1,5 +1,5 @@
 /**
- * Tiny CSV serialiser for admin result exports. No external dependency — the
+ * Tiny CSV serialiser for admin result exports. No external dependency - the
  * project only ships csv-parse (read side), not a stringifier.
  */
 const escapeCell = (value) => {

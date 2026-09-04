@@ -81,7 +81,7 @@ const taskSubmissionSchema = new mongoose.Schema(
       discardedAt: { type: Date, default: null },
     },
     // How many Chinese characters differ between the source transcript and the
-    // annotator's correction — kept so "minor corrections only" can be audited.
+    // annotator's correction - kept so "minor corrections only" can be audited.
     editCharCount: {
       type: Number,
       default: 0,

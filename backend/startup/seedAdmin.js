@@ -66,7 +66,7 @@ const seedFirstAdmin = async () => {
 
 /**
  * Startup wrapper: seeds the first admin and logs the outcome.
- * Never throws — a seeding problem must not stop the API from serving.
+ * Never throws - a seeding problem must not stop the API from serving.
  */
 const seedFirstAdminOnStartup = async () => {
   if (!config.admin.seedOnStartup) {

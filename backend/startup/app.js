@@ -16,7 +16,7 @@ const createApp = () => {
   // CORS
   app.use(cors());
 
-  // Body parsers — increase limit for audio metadata
+  // Body parsers - increase limit for audio metadata
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 

@@ -5,7 +5,7 @@ const storage = multer.memoryStorage();
 
 const SUPPORTED_EXTENSIONS = new Set([".xlsx", ".xls", ".csv"]);
 
-// Extension is the authoritative check — browsers/OS report wildly inconsistent
+// Extension is the authoritative check - browsers/OS report wildly inconsistent
 // MIME types for CSV (text/csv, application/vnd.ms-excel, application/csv,
 // text/plain depending on platform), so gating on MIME here would just be
 // unreliable rather than safer.

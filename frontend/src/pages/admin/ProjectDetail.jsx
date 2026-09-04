@@ -685,7 +685,7 @@ export default function ProjectDetail() {
                 onClick={handleExportResults}
                 className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
                 disabled={exportingResults}
-                title="Export all results for this project as CSV — partial results included, no need to wait for completion"
+                title="Export all results for this project as CSV - partial results included, no need to wait for completion"
               >
                 <FileDown size={16} /> {exportingResults ? "Exporting..." : "Export Results"}
               </button>
@@ -1268,7 +1268,7 @@ export default function ProjectDetail() {
            {/* <div>
               <label className="label">Assign To <span className="normal-case text-slate-500">(optional)</span></label>
               <select value={form.assignedTo} onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))} className="input">
-                <option value="">— Unassigned —</option>
+                <option value="">- Unassigned -</option>
                 {users.map((u) => <option key={u._id} value={u._id}>{u.name} ({u.email})</option>)}
               </select>
             </div>*/}

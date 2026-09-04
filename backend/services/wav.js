@@ -1,5 +1,5 @@
 /**
- * Minimal RIFF/WAVE header parser — enough to enforce the recording format
+ * Minimal RIFF/WAVE header parser - enough to enforce the recording format
  * contract (mono, 16 kHz, 16-bit PCM) and to derive the clip duration.
  *
  * Throws an Error with a 400 statusCode when the buffer is not a well-formed

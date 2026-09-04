@@ -1,4 +1,4 @@
-// Mirror of backend/services/textDiff.js — each Chinese character counts as one
+// Mirror of backend/services/textDiff.js - each Chinese character counts as one
 // "word", whitespace is ignored so reflowing text is not treated as an edit.
 const toChars = (value = "") => Array.from(String(value).replace(/\s+/g, ""));
 

@@ -105,7 +105,7 @@ Default URLs:
 ## Seed the First Admin
 
 The first admin is created from environment variables, so a production
-deployment needs no manual database step — set the credentials on the backend
+deployment needs no manual database step - set the credentials on the backend
 and start the server:
 
 ```env
@@ -123,7 +123,7 @@ On every boot the server checks the database and:
 
 It never overwrites an existing account or password, and a seeding problem is
 logged without stopping the API. Because it only ever creates the *first*
-admin, changing `ADMIN_PASSWORD` later does not reset the account — rotate the
+admin, changing `ADMIN_PASSWORD` later does not reset the account - rotate the
 password through the app.
 
 To seed without starting the API (one-off job, local setup, CI), run the same
@@ -164,9 +164,9 @@ Base path: `/api`
   dedicated project named after that annotator's generated username and assigns
   it to them; upload the task CSV into that project afterwards.
 - Result export (partial results allowed, no completion gate):
-  - `GET /admin/export?projectId=&userId=` — CSV, optionally scoped
-  - `GET /admin/projects/:projectId/export` — CSV for one project
-  - `GET /admin/users/:id/export` — CSV for one annotator
+  - `GET /admin/export?projectId=&userId=` - CSV, optionally scoped
+  - `GET /admin/projects/:projectId/export` - CSV for one project
+  - `GET /admin/users/:id/export` - CSV for one annotator
 
 ### User routes
 - Prefix: `/user`

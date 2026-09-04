@@ -52,7 +52,7 @@ export default function UserLayout({ children }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Overlay (desktop + mobile — sidebar is drawer-style on every viewport) */}
+      {/* Overlay (desktop + mobile - sidebar is drawer-style on every viewport) */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-20 bg-black/60"
@@ -60,7 +60,7 @@ export default function UserLayout({ children }) {
         />
       )}
 
-      {/* Sidebar — hidden by default, revealed via the menu button */}
+      {/* Sidebar - hidden by default, revealed via the menu button */}
       <aside className={`
         sidebar-surface fixed inset-y-0 left-0 z-30 w-64 bg-surface-card border-r border-surface-border flex flex-col
         transform transition-transform duration-200 ease-in-out

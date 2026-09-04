@@ -6,7 +6,7 @@ const logger = require("../logging/logger");
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    logger.warn(`Auth failed — no token provided | ${req.method} ${req.url}`);
+    logger.warn(`Auth failed - no token provided | ${req.method} ${req.url}`);
     return errorResponse(res, "Access denied. No token provided.", 401);
   }
 
@@ -14,10 +14,10 @@ const authenticate = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, config.jwtSecret);
     req.user = decoded;
-    logger.debug(`Auth OK — user: ${decoded.id} role: ${decoded.role}`);
+    logger.debug(`Auth OK - user: ${decoded.id} role: ${decoded.role}`);
     next();
   } catch (err) {
-    logger.warn(`Auth failed — invalid token | ${req.method} ${req.url}`);
+    logger.warn(`Auth failed - invalid token | ${req.method} ${req.url}`);
     return errorResponse(res, "Invalid or expired token.", 401);
   }
 };
@@ -29,7 +29,7 @@ const requireRole = (...roles) => {
     }
     if (!roles.includes(req.user.role)) {
       logger.warn(
-        `Access denied — user ${req.user.id} (role: ${req.user.role}) tried to access ${req.method} ${req.url}`
+        `Access denied - user ${req.user.id} (role: ${req.user.role}) tried to access ${req.method} ${req.url}`
       );
       return errorResponse(res, "Access denied. Insufficient permissions.", 403);
     }

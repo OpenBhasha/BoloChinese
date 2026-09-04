@@ -40,7 +40,7 @@ export const getTaskById = (id) => api.get(`/admin/tasks/${id}`);
 export const updateTask = (id, data) => api.patch(`/admin/tasks/${id}`, data);
 export const deleteTask = (id) => api.delete(`/admin/tasks/${id}`);
 
-// Result export (partial results allowed — no completion gate)
+// Result export (partial results allowed - no completion gate)
 export const exportProjectResults = (projectId) =>
 	api.get(`/admin/projects/${projectId}/export`, { responseType: "blob" });
 export const exportUserResults = (userId) =>
