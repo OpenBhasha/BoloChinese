@@ -81,8 +81,11 @@ export default function ProjectDetail() {
   const fetchProject = () => {
     Promise.all([getProjectById(id)])
       .then(([pr]) => {
+        // Backend no longer ships the full tasks[] array for projects with
+        // thousands of items - we drive everything off submissions +
+        // project.taskCount. Keep setTasks for legacy code paths, but empty.
         setProject(pr.data.data);
-        setTasks(pr.data.data.tasks || []);
+        setTasks([]);
       })
       .catch(() => toast.error("Failed to load project"))
       .finally(() => setLoading(false));
@@ -107,11 +110,11 @@ export default function ProjectDetail() {
       setSubmissionsLoading(false);
       return;
     }
-
-    if (!tasks.length) {
+    if (!project) return undefined;
+    if ((project.taskCount || 0) === 0) {
       setSubmissionsByTaskId({});
       setSubmissionsLoading(false);
-      return;
+      return undefined;
     }
 
     let ignore = false;
@@ -146,7 +149,7 @@ export default function ProjectDetail() {
     return () => {
       ignore = true;
     };
-  }, [tasks, activeView]);
+  }, [project, activeView, id]);
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 640);
@@ -300,16 +303,22 @@ export default function ProjectDetail() {
   };
 
   const selectedSubmission = taskSubmissions.find((s) => s._id === selectedSubmissionId) || null;
+  // Build rows directly from the flat submissions map instead of iterating a
+  // full tasks[] array (which we no longer fetch). Each submission carries
+  // its taskId populated with { _id, taskId, dialogueId, chineseTranscript,
+  // pinyin }, so it fully replaces the old join.
   const allSubmissionRows = useMemo(() => {
     const rows = [];
-    tasks.forEach((task) => {
-      const entries = submissionsByTaskId[task._id] || [];
+    Object.values(submissionsByTaskId).forEach((entries) => {
       entries.forEach((submission) => {
+        const task = submission.taskId && typeof submission.taskId === "object"
+          ? submission.taskId
+          : { _id: submission.taskId };
         rows.push({ task, submission });
       });
     });
     return rows;
-  }, [tasks, submissionsByTaskId]);
+  }, [submissionsByTaskId]);
 
   const submissionRows = useMemo(
     () => allSubmissionRows.filter(({ submission }) => submission.audio?.url || submission.audio?.publicId),
@@ -481,9 +490,9 @@ export default function ProjectDetail() {
       toast.success(`Deleted ${res.data.data.deletedCount} task(s).`);
       setSelectedTaskIds(new Set());
       setConfirmBulkDelete(false);
-      // Refresh tasks
+      // Refresh the project (its taskCount changes after bulk delete).
       const pr = await getProjectById(id);
-      setTasks(pr.data.data.tasks || []);
+      setProject(pr.data.data);
     } catch (err) {
       toast.error(err.response?.data?.message || "Bulk delete failed.");
     } finally {

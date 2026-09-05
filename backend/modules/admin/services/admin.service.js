@@ -308,10 +308,12 @@ const getProjectById = async (id) => {
     err.statusCode = 404;
     throw err;
   }
-  if (Array.isArray(project.tasks)) {
-    project.tasks = sortTasksByTaskId(project.tasks);
-  }
-  return project;
+  // Attach taskCount without shipping the full task list.
+  const Task = require("../models/task.model");
+  const taskCount = await Task.countDocuments({ projectId: id });
+  const projectObj = project.toObject ? project.toObject() : project;
+  projectObj.taskCount = taskCount;
+  return projectObj;
 };
 
 const updateProject = async (id, data) => {

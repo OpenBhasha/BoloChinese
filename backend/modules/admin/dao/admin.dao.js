@@ -52,11 +52,17 @@ const createProject = async (data) => {
 };
 
 const getAllProjects = async () => {
-  return Project.find().populate("createdBy", "name email").sort({ createdAt: -1 });
+  // The Project doc holds a tasks[] array of ObjectIds - excluded from list
+  // and detail responses; the client uses taskCount when it needs a length.
+  return Project.find().select("-tasks").populate("createdBy", "name email").sort({ createdAt: -1 });
 };
 
 const getProjectById = async (id) => {
-  return Project.findById(id).populate("createdBy", "name email").populate("tasks");
+  // Drop the tasks[] ObjectId array AND the old .populate("tasks") - for a
+  // project with 1000+ tasks that populate was returning 300 KB of Chinese
+  // and Pinyin text just to render the header card. taskCount is attached
+  // via a lightweight countDocuments in the service layer.
+  return Project.findById(id).select("-tasks").populate("createdBy", "name email");
 };
 
 const getProjectByName = async (name) => {
