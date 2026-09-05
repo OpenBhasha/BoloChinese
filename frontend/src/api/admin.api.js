@@ -16,6 +16,7 @@ export const assignProjectToUser = (projectId, userId) =>
 export const unassignProjectFromUser = (projectId, userId) =>
 	api.delete(`/admin/projects/${projectId}/assign/${userId}`);
 export const getProjectAssignees = (projectId) => api.get(`/admin/projects/${projectId}/assignees`);
+export const getUserProfileAsAdmin = (userId) => api.get(`/admin/users/${userId}/profile`);
 
 // Projects
 export const createProject = (data) => api.post("/admin/projects", data);

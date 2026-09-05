@@ -76,6 +76,11 @@ router.get(
   [validateObjectId("projectId"), validate],
   ctrl.getProjectAssignees
 );
+router.get(
+  "/users/:id/profile",
+  [validateObjectId("id"), validate],
+  ctrl.getUserProfile
+);
 
 // ─── Admin view user submissions ─────────────────────────────────────────────
 router.get("/tasks/:id/submissions", [validateObjectId("id"), validate], ctrl.getTaskSubmissions);

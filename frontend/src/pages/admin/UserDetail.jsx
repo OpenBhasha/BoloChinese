@@ -108,14 +108,22 @@ export default function UserDetail() {
             {progress.phone ? ` · ${progress.phone}` : ""}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={exporting}
-          className="btn-secondary inline-flex items-center gap-2"
-        >
-          <Download size={16} /> {exporting ? "Exporting…" : "Export Results"}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            to={`/admin/users/${id}/profile`}
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            View profile
+          </Link>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting}
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            <Download size={16} /> {exporting ? "Exporting…" : "Export Results"}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4 mb-10">

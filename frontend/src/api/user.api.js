@@ -1,5 +1,8 @@
 import api from "./axios";
 
+export const getMyProfile = () => api.get("/user/me");
+export const updateMyProfile = (payload) => api.patch("/user/me", payload);
+
 export const getMyTasks = () => api.get("/user/tasks");
 export const getMyProjects = () => api.get("/user/projects");
 export const getProjectTasks = (id) => api.get(`/user/projects/${id}/tasks`);

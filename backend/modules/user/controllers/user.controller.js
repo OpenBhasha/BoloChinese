@@ -193,6 +193,26 @@ const reconsiderTask = async (req, res, next) => {
   }
 };
 
+const getMyProfile = async (req, res, next) => {
+  try {
+    const profile = await userSvc.getUserProfile(req.user.id);
+    return successResponse(res, "Profile retrieved.", profile);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const updateMyProfile = async (req, res, next) => {
+  try {
+    const updated = await userSvc.updateUserProfile(req.user.id, req.body || {});
+    return successResponse(res, "Profile updated.", updated);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 module.exports = {
   getMyTasks,
   getMyProjects,
@@ -207,4 +227,6 @@ module.exports = {
   markErroneous,
   discardTask,
   reconsiderTask,
+  getMyProfile,
+  updateMyProfile,
 };

@@ -178,6 +178,49 @@ const reconsiderTask = async (taskId, userId) => {
   return getTaskDetail(taskId, userId);
 };
 
+// Fields the user (or an admin acting on the user) may edit on the profile.
+// Everything else - username, role, verification flags, dedicatedProjectId -
+// stays locked.
+const PROFILE_EDITABLE_FIELDS = ["name", "phone", "email"];
+
+const getUserProfile = async (userId) => {
+  const user = await dao.getUserById(userId);
+  if (!user) {
+    const err = new Error("User not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  const [projects, analytics] = await Promise.all([
+    dao.getProjectsForUser(userId),
+    dao.getUserSubmissionAggregate(userId),
+  ]);
+  return { user, projects, analytics };
+};
+
+const updateUserProfile = async (userId, patch = {}) => {
+  const clean = {};
+  PROFILE_EDITABLE_FIELDS.forEach((k) => {
+    if (patch[k] !== undefined) clean[k] = String(patch[k]).trim();
+  });
+  if (!Object.keys(clean).length) {
+    const err = new Error("Nothing to update.");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (clean.email !== undefined && !clean.email) {
+    const err = new Error("Email cannot be empty.");
+    err.statusCode = 400;
+    throw err;
+  }
+  const updated = await dao.updateUserSelfFields(userId, clean);
+  if (!updated) {
+    const err = new Error("User not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  return updated;
+};
+
 module.exports = {
   getMyTasks,
   getMyProjects,
@@ -191,4 +234,6 @@ module.exports = {
   markErroneous,
   discardTask,
   reconsiderTask,
+  getUserProfile,
+  updateUserProfile,
 };

@@ -10,6 +10,10 @@ const audioUpload = require("./services/audioUpload.service");
 // All user routes require authentication + user role
 router.use(authenticate, requireRole("user"));
 
+// GET / PATCH /api/user/me - annotator profile (identity + projects + analytics)
+router.get("/me", ctrl.getMyProfile);
+router.patch("/me", ctrl.updateMyProfile);
+
 // GET /api/user/tasks
 router.get("/tasks", ctrl.getMyTasks);
 

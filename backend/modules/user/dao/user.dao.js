@@ -2,6 +2,7 @@ const Task = require("../../admin/models/task.model");
 const Project = require("../../admin/models/project.model");
 const ProjectAssignment = require("../../admin/models/projectAssignment.model");
 const TaskSubmission = require("../../admin/models/taskSubmission.model");
+const User = require("../../register/models/user.model");
 
 const getTaskSequence = (taskId = "") => {
   const match = String(taskId).match(/^TASK-(\d+)$/i);
@@ -308,6 +309,64 @@ const reconsiderSubmission = async (taskId, userId) => {
   );
 };
 
+const getUserById = async (userId) => {
+  return User.findById(userId)
+    .select("-password -__v")
+    .lean();
+};
+
+const updateUserSelfFields = async (userId, patch) => {
+  return User.findByIdAndUpdate(userId, { $set: patch }, { new: true, runValidators: true })
+    .select("-password -__v")
+    .lean();
+};
+
+// Aggregate submission stats for a single user across all their assigned
+// projects. Used by both the annotator's own profile and the admin's
+// user-profile view.
+const getUserSubmissionAggregate = async (userId) => {
+  const submissions = await TaskSubmission.find({ userId })
+    .select("status audio.durationSeconds editCharCount")
+    .lean();
+
+  const stats = {
+    totalSubmissions: submissions.length,
+    completed: 0,
+    inProgress: 0,
+    corrected: 0,
+    verified: 0,
+    discarded: 0,
+    skipped: 0,
+    erroneous: 0,
+  };
+  let audioCount = 0;
+  let audioSeconds = 0;
+  let totalEditChars = 0;
+
+  submissions.forEach((s) => {
+    if (s.status === "completed") stats.completed += 1;
+    else if (s.status === "corrected") stats.corrected += 1;
+    else if (s.status === "verified") stats.verified += 1;
+    else if (s.status === "discarded") stats.discarded += 1;
+    else if (s.status === "skipped") stats.skipped += 1;
+    else if (s.status === "erroneous") stats.erroneous += 1;
+    else stats.inProgress += 1;
+
+    const seconds = Number(s.audio?.durationSeconds || 0);
+    if (seconds > 0) {
+      audioCount += 1;
+      audioSeconds += seconds;
+    }
+    totalEditChars += Number(s.editCharCount || 0);
+  });
+
+  return {
+    ...stats,
+    audio: { count: audioCount, totalSeconds: Math.round(audioSeconds) },
+    totalEditChars,
+  };
+};
+
 module.exports = {
   getTasksForUser,
   getProjectsForUser,
@@ -324,4 +383,7 @@ module.exports = {
   markSubmissionErroneous,
   markSubmissionDiscarded,
   reconsiderSubmission,
+  getUserById,
+  updateUserSelfFields,
+  getUserSubmissionAggregate,
 };

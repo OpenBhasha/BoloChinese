@@ -12,6 +12,7 @@ import ProjectDetail from "./pages/admin/ProjectDetail";
 import UserDashboard from "./pages/user/Dashboard";
 import UserProjectTasks from "./pages/user/ProjectTasks";
 import TaskDetail from "./pages/user/TaskDetail";
+import UserProfile from "./pages/user/UserProfile";
 
 // ─── Protected Route Guards ───────────────────────────────────────────────────
 function RequireAuth({ children, role }) {
@@ -52,11 +53,13 @@ export default function App() {
           <Route path="/admin" element={<RequireAuth role="admin"><AdminDashboard /></RequireAuth>} />
           <Route path="/admin/users" element={<RequireAuth role="admin"><AdminUsers /></RequireAuth>} />
           <Route path="/admin/users/:id" element={<RequireAuth role="admin"><AdminUserDetail /></RequireAuth>} />
+          <Route path="/admin/users/:id/profile" element={<RequireAuth role="admin"><UserProfile /></RequireAuth>} />
           <Route path="/admin/projects" element={<RequireAuth role="admin"><AdminProjects /></RequireAuth>} />
           <Route path="/admin/projects/:id" element={<RequireAuth role="admin"><ProjectDetail /></RequireAuth>} />
 
           {/* User */}
           <Route path="/user" element={<RequireAuth role="user"><UserDashboard /></RequireAuth>} />
+          <Route path="/user/profile" element={<RequireAuth role="user"><UserProfile /></RequireAuth>} />
           <Route path="/user/projects/:id" element={<RequireAuth role="user"><UserProjectTasks /></RequireAuth>} />
           <Route path="/user/tasks/:id" element={<RequireAuth role="user"><TaskDetail /></RequireAuth>} />
 

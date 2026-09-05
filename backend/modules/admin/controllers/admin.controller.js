@@ -87,6 +87,17 @@ const unassignProjectFromUser = async (req, res, next) => {
   }
 };
 
+const getUserProfile = async (req, res, next) => {
+  try {
+    const userSvc = require("../../user/services/user.service");
+    const profile = await userSvc.getUserProfile(req.params.id);
+    return successResponse(res, "User profile retrieved.", profile);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 const getProjectAssignees = async (req, res, next) => {
   try {
     const assignees = await svc.getProjectAssignees(req.params.projectId);
@@ -333,6 +344,7 @@ module.exports = {
   assignProjectToUser,
   unassignProjectFromUser,
   getProjectAssignees,
+  getUserProfile,
   getAssignedProjectIdsByUser,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
   createTask, uploadTasksImport, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
