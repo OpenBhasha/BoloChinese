@@ -182,7 +182,12 @@ export default function TaskDetail() {
   // when the recorder is mounted, the compact recorder panel above it.
   const scrollBottomPad = canRecord ? "pb-56" : "pb-20";
   const displayNumber = currentTaskIndex >= 0 ? currentTaskIndex + 1 : null;
-  const nextDisabled = !isTaskFinished(task);
+  const finished = isTaskFinished(task);
+  const nextDisabled = !finished;
+  // Once submitted (audio uploaded) or discarded, the task is read-only.
+  // Nothing can be re-edited, re-recorded, or reopened - annotators can only
+  // page through with Prev / Next.
+  const readOnly = finished;
 
   return (
     <UserLayout>
@@ -218,6 +223,7 @@ export default function TaskDetail() {
           nextTask={nextTask}
           onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
           onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
+          readOnly={readOnly}
         />
 
         {/* Audio status */}
@@ -245,6 +251,7 @@ export default function TaskDetail() {
               task={task}
               taskId={id}
               nextTask={nextTask}
+              readOnly={readOnly}
               onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
               onSubmittingChange={setRecorderSubmitting}
               onPendingRecordingChange={setPendingRecording}

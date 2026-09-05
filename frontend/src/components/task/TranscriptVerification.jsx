@@ -68,7 +68,7 @@ function ScriptPanels({ chinese, pinyin, editable, onChineseChange, onPinyinChan
  *   ready-to-record - read-only review; the recorder unlocks
  *   discarded       - terminal, undoable
  */
-export default function TranscriptVerification({ task, onTaskUpdate, nextTask, onNavigate }) {
+export default function TranscriptVerification({ task, onTaskUpdate, nextTask, onNavigate, readOnly = false }) {
   const [step, setStep] = useState(() => deriveStep(task));
   const [verifying, setVerifying] = useState(false);
   const [chineseDraft, setChineseDraft] = useState(task.correctedChineseTranscript || task.chineseTranscript);
@@ -241,18 +241,10 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
           <div className="min-w-0">
             <p className="label text-red-600 mb-1">Task Discarded</p>
             <p className="text-sm text-red-800">
-              You discarded this item from the edit screen. It won't be recorded unless you reopen it.
+              This task is discarded and locked. Use Previous / Next to move on.
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleReconsider}
-          disabled={reconsidering}
-          className="btn-secondary text-sm mt-4 inline-flex items-center gap-1.5"
-        >
-          <RotateCcw size={14} /> {reconsidering ? "Reopening…" : "Undo / Re-verify"}
-        </button>
       </div>
     );
   }
@@ -263,18 +255,24 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
         <div className="flex items-center gap-2 text-sm text-emerald-700">
           <CheckCircle2 size={16} />
           <span>
-            {task.isCorrected ? "Correction submitted - recording unlocked." : "Text verified - recording unlocked."}
+            {readOnly
+              ? "Submitted - this task is locked. Use Previous / Next to move on."
+              : task.isCorrected
+              ? "Correction submitted - recording unlocked."
+              : "Text verified - recording unlocked."}
           </span>
         </div>
         <ScriptPanels chinese={displayChinese} pinyin={displayPinyin} editable={false} />
-        <button
-          type="button"
-          onClick={handleReconsider}
-          disabled={reconsidering}
-          className="btn-secondary text-xs inline-flex items-center gap-1.5"
-        >
-          <RotateCcw size={13} /> {reconsidering ? "Reopening…" : "Re-open verification"}
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={handleReconsider}
+            disabled={reconsidering}
+            className="btn-secondary text-xs inline-flex items-center gap-1.5"
+          >
+            <RotateCcw size={13} /> {reconsidering ? "Reopening…" : "Re-open verification"}
+          </button>
+        )}
       </div>
     );
   }

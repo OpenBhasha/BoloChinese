@@ -37,6 +37,7 @@ export default function AudioRecorder({
   onAfterUpload,
   onSubmittingChange,
   onPendingRecordingChange,
+  readOnly = false,
 }) {
   const [recording, setRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
@@ -319,7 +320,7 @@ export default function AudioRecorder({
         </span>
       )}
 
-      {renderActions()}
+      {!readOnly && renderActions()}
 
       {/* Playback strip: shown for both a fresh recording (audioBlob) and for
           audio already stored on the server, so the annotator can review
