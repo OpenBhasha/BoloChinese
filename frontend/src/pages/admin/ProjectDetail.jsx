@@ -42,7 +42,8 @@ export default function ProjectDetail() {
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState(ADMIN_PROJECT_VIEWS.TASKS);
+  // Tasks tab was removed from the UI - default to Submissions.
+  const [activeView, setActiveView] = useState(ADMIN_PROJECT_VIEWS.SUBMISSIONS);
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_TASK);
@@ -703,17 +704,6 @@ export default function ProjectDetail() {
               <div className="inline-flex rounded-lg border border-[#c3cdc0] bg-white p-1 w-full sm:w-auto">
                 <button
                   type="button"
-                  onClick={() => handleViewChange(ADMIN_PROJECT_VIEWS.TASKS)}
-                  className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-md border border-transparent transition ${
-                    activeView === ADMIN_PROJECT_VIEWS.TASKS
-                      ? "bg-[#dbe7d8] text-black border-[#b9c8b3]"
-                      : "bg-transparent text-black hover:bg-[#eef4ec]"
-                  }`}
-                >
-                  Tasks
-                </button>
-                <button
-                  type="button"
                   onClick={() => handleViewChange(ADMIN_PROJECT_VIEWS.SUBMISSIONS)}
                   className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-md border border-transparent transition ${
                     activeView === ADMIN_PROJECT_VIEWS.SUBMISSIONS
@@ -774,23 +764,12 @@ export default function ProjectDetail() {
                 <Upload size={16} /> {bulkUploading ? "Uploading..." : "Upload Tasks"}
               </button>
               <button
-                onClick={handleDownloadTemplate}
-                className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
-                disabled={downloadingTemplate}
-                title="Download template file for bulk task upload"
-              >
-                <Download size={16} /> {downloadingTemplate ? "Downloading..." : "Download Template"}
-              </button>
-              <button
                 onClick={handleExportResults}
-                className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
+                className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto"
                 disabled={exportingResults}
-                title="Export all results for this project as CSV - partial results included, no need to wait for completion"
+                title="Export all results for this project as CSV"
               >
-                <FileDown size={16} /> {exportingResults ? "Exporting..." : "Export Results"}
-              </button>
-              <button onClick={openCreate} className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto">
-                <Plus size={16} /> Add Task
+                <FileDown size={16} /> {exportingResults ? "Exporting..." : "Export"}
               </button>
             </div>
           </div>

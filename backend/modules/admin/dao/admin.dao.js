@@ -359,7 +359,7 @@ const getTaskSubmissions = async (taskId) => {
 // Every submission (any status - partial work included) for a result export.
 const getSubmissionsForExport = async (filter = {}) => {
   return TaskSubmission.find(filter)
-    .populate("taskId", "taskId dialogueId chineseTranscript pinyin")
+    .populate("taskId", "taskId dialogueId chineseTranscript pinyin createdAt")
     .populate("projectId", "name")
     .populate("userId", "name email username")
     .sort({ updatedAt: -1 })

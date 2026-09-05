@@ -538,60 +538,82 @@ const createTasksFromImport = async (projectId, fileBuffer, fileExtension) => {
 
 // ─── Result export (partial results allowed, no completion gate) ──────────────
 const EXPORT_COLUMNS = [
+  // Primary columns (annotator payload)
   { key: "taskId", header: "Task ID" },
   { key: "dialogueId", header: "Dialogue ID" },
+  { key: "chineseTranscript", header: "Original Chinese" },
+  { key: "pinyin", header: "Original Pinyin" },
+  { key: "finalChinese", header: "Final Chinese" },
+  { key: "finalPinyin", header: "Final Pinyin" },
+  { key: "status", header: "Status" },
+  { key: "audioUrl", header: "Audio URL" },
+  { key: "audioDurationSeconds", header: "Audio Duration (s)" },
+  { key: "timeSpentSeconds", header: "Time Spent (s)" },
+  { key: "timeSpentHms", header: "Time Spent (h:mm:ss)" },
+  // Annotator + project attribution
   { key: "project", header: "Project" },
   { key: "user", header: "Annotator" },
+  { key: "userUsername", header: "Annotator Username" },
   { key: "userEmail", header: "Annotator Email" },
-  { key: "status", header: "Status" },
+  // Workflow flags
   { key: "pinyinVerified", header: "Text Verified" },
   { key: "isCorrected", header: "Edited" },
   { key: "editCharCount", header: "Edited Chars" },
   { key: "discarded", header: "Discarded" },
   { key: "erroneous", header: "Erroneous" },
   { key: "erroneousReason", header: "Erroneous Reason" },
-  { key: "chineseTranscript", header: "Chinese (source)" },
-  { key: "pinyin", header: "Pinyin (source)" },
-  { key: "correctedChineseTranscript", header: "Chinese (corrected)" },
-  { key: "correctedPinyin", header: "Pinyin (corrected)" },
-  { key: "finalChinese", header: "Chinese (final)" },
-  { key: "finalPinyin", header: "Pinyin (final)" },
-  { key: "audioUrl", header: "Audio URL" },
-  { key: "audioDurationSeconds", header: "Audio Duration (s)" },
+  // Audio technicals
+  { key: "audioPublicId", header: "Audio Public ID" },
   { key: "audioSampleRate", header: "Sample Rate" },
   { key: "audioBitDepth", header: "Bit Depth" },
   { key: "audioSizeBytes", header: "Audio Size (bytes)" },
+  { key: "audioUploadedAt", header: "Audio Uploaded At" },
+  // Timestamps
+  { key: "taskCreatedAt", header: "Task Created At" },
   { key: "updatedAt", header: "Last Updated" },
 ];
+
+const formatHms = (totalSeconds) => {
+  const s = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  return `${hh}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+};
 
 const toExportRow = (submission) => {
   const task = submission.taskId || {};
   const correctedChinese = submission.correctedChineseTranscript || "";
   const correctedPinyin = submission.correctedPinyin || "";
+  const timeSpentSeconds = Math.round((submission.timeSpentMs || 0) / 1000);
   return {
     taskId: task.taskId || "",
     dialogueId: task.dialogueId || "",
+    chineseTranscript: task.chineseTranscript || "",
+    pinyin: task.pinyin || "",
+    finalChinese: correctedChinese || task.chineseTranscript || "",
+    finalPinyin: correctedPinyin || task.pinyin || "",
+    status: submission.status || "",
+    audioUrl: submission.audio?.url || "",
+    audioDurationSeconds: submission.audio?.durationSeconds || 0,
+    timeSpentSeconds,
+    timeSpentHms: formatHms(timeSpentSeconds),
     project: submission.projectId?.name || "",
     user: submission.userId?.name || "",
+    userUsername: submission.userId?.username || "",
     userEmail: submission.userId?.email || "",
-    status: submission.status || "",
     pinyinVerified: submission.pinyinVerified === true ? "yes" : submission.pinyinVerified === false ? "no" : "",
     isCorrected: submission.isCorrected ? "yes" : "no",
     editCharCount: submission.editCharCount || 0,
     discarded: submission.discarded?.flagged ? "yes" : "no",
     erroneous: submission.erroneous?.flagged ? "yes" : "no",
     erroneousReason: submission.erroneous?.reason || "",
-    chineseTranscript: task.chineseTranscript || "",
-    pinyin: task.pinyin || "",
-    correctedChineseTranscript: correctedChinese,
-    correctedPinyin,
-    finalChinese: correctedChinese || task.chineseTranscript || "",
-    finalPinyin: correctedPinyin || task.pinyin || "",
-    audioUrl: submission.audio?.url || "",
-    audioDurationSeconds: submission.audio?.durationSeconds || 0,
+    audioPublicId: submission.audio?.publicId || "",
     audioSampleRate: submission.audio?.sampleRate || "",
     audioBitDepth: submission.audio?.bitDepth || "",
     audioSizeBytes: submission.audio?.fileSizeBytes || 0,
+    audioUploadedAt: submission.audio?.uploadedAt ? new Date(submission.audio.uploadedAt).toISOString() : "",
+    taskCreatedAt: task.createdAt ? new Date(task.createdAt).toISOString() : "",
     updatedAt: submission.updatedAt ? new Date(submission.updatedAt).toISOString() : "",
   };
 };
