@@ -313,18 +313,8 @@ export default function AudioRecorder({
   };
 
   return (
-    <div className="rounded-xl bg-primary-700 px-3 py-2 flex items-center justify-center gap-4">
-      {recording && (
-        <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">
-          {formatTime(recordingElapsed)}
-        </span>
-      )}
-
-      {!readOnly && renderActions()}
-
-      {/* Playback strip: shown for both a fresh recording (audioBlob) and for
-          audio already stored on the server, so the annotator can review
-          before Submit & Next. */}
+    <div className="rounded-xl bg-primary-700 px-3 py-2 flex flex-col gap-2">
+      {/* Row 1: playback strip (only when audio is available - fresh or stored). */}
       {(hasStoredAudio || audioBlob) && (
         <>
           <audio
@@ -335,11 +325,11 @@ export default function AudioRecorder({
             onEnded={() => setPlaying(false)}
             className="hidden"
           />
-          <div className="flex items-center gap-2 flex-1 min-w-0 max-w-md">
+          <div className="flex items-center gap-2 w-full">
             <button
               type="button"
               onClick={togglePlayback}
-              className="recorder-btn-label"
+              className="recorder-btn-label shrink-0"
               aria-label={playing ? "Pause audio" : "Play audio"}
             >
               {playing ? <Pause size={20} /> : <Play size={20} />}
@@ -358,12 +348,22 @@ export default function AudioRecorder({
               }}
               className="flex-1 accent-white"
             />
-            <span className="recorder-btn-label text-[11px] min-w-[64px] text-right">
+            <span className="recorder-btn-label text-[11px] min-w-[64px] text-right shrink-0">
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
           </div>
         </>
       )}
+
+      {/* Row 2: recording timer + action buttons (mic / Retry + Submit & Next). */}
+      <div className="flex items-center justify-center gap-4">
+        {recording && (
+          <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">
+            {formatTime(recordingElapsed)}
+          </span>
+        )}
+        {!readOnly && renderActions()}
+      </div>
     </div>
   );
 }
