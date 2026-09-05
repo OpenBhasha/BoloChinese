@@ -306,12 +306,12 @@ const getTaskSubmissions = async (req, res, next) => {
 const streamSubmissionAudio = async (req, res, next) => {
   try {
     const submission = await svc.getTaskSubmissionById(req.params.id);
-    if (!submission.audio || !submission.audio.url) {
+    if (!submission.audio || !submission.audio.publicId) {
       return errorResponse(res, "No audio found for this submission.", 404);
     }
 
-    const { getAudioStream } = require("../../../services/cloudinary.service");
-    const stream = await getAudioStream(submission.audio.url);
+    const { getAudioStream } = require("../../../services/audioStorage.service");
+    const stream = await getAudioStream(submission.audio.publicId);
 
     res.setHeader("Content-Type", submission.audio.contentType || "audio/wav");
     res.setHeader("Content-Disposition", `attachment; filename="submission-${submission._id}.wav"`);

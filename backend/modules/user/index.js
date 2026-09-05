@@ -34,7 +34,7 @@ router.post(
   ctrl.uploadAudio
 );
 
-// GET /api/user/tasks/:id/audio  - stream audio directly from Cloudinary
+// GET /api/user/tasks/:id/audio  - stream the annotator's saved audio
 router.get("/tasks/:id/audio", [validateObjectId("id"), validate], ctrl.streamAudio);
 
 // POST /api/user/tasks/:id/skip

@@ -163,7 +163,7 @@ const saveAudio = async (
         userId,
         status,
         audioVerifiedAt: new Date(),
-        "audio.provider": "cloudinary",
+        "audio.provider": "local",
         "audio.publicId": publicId,
         "audio.url": url,
         "audio.contentType": "audio/wav",

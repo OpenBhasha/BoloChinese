@@ -21,7 +21,7 @@ Bolo/
 - MongoDB + Mongoose
 - JWT authentication
 - Multer (file uploads)
-- Cloudinary (audio storage/streaming)
+- Local filesystem (audio storage under `backend/uploads/audio/`)
 
 ### Frontend
 - React + Vite
@@ -35,7 +35,6 @@ Bolo/
 - Node.js 18 or newer
 - npm 9 or newer
 - MongoDB instance (local or cloud)
-- Cloudinary account
 
 ## Environment Setup
 
@@ -50,9 +49,8 @@ JWT_SECRET=replace_with_a_strong_secret
 JWT_EXPIRES_IN=7d
 NODE_ENV=development
 
-CLOUDINARY_CLOUD_NAME=your_cloud_name
-CLOUDINARY_API_KEY=your_api_key
-CLOUDINARY_API_SECRET=your_api_secret
+# Audio files are stored on the local filesystem under backend/uploads/audio/
+# (created on demand). No external storage service is required.
 
 # First admin, seeded automatically on server startup
 ADMIN_NAME=Super Admin

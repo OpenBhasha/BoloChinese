@@ -324,10 +324,10 @@ const deleteTaskSubmission = async (submissionId) => {
 
   if (submission.audio?.publicId) {
     try {
-      const { deleteAudio } = require("../../../services/cloudinary.service");
+      const { deleteAudio } = require("../../../services/audioStorage.service");
       await deleteAudio(submission.audio.publicId);
     } catch (audioErr) {
-      logger.warn(`Could not delete Cloudinary audio for submission ${submissionId}: ${audioErr.message}`);
+      logger.warn(`Could not delete local audio for submission ${submissionId}: ${audioErr.message}`);
     }
   }
 

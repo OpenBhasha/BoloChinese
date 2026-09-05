@@ -6,7 +6,7 @@ Get Bolo running on your machine end-to-end. Estimated time: 10–15 minutes.
 
 - **Node.js 18+** and **npm 9+** (`node -v` / `npm -v`)
 - **MongoDB** (see [MongoDB](#mongodb) below — pick one option)
-- **Cloudinary account** — only required for the audio recording + playback endpoints. The rest of the app (login, verify, edit, navigation) works without it.
+- **Local disk space** for recorded audio — files land under `backend/uploads/audio/<userId>/`. No external audio service is required.
 - **Git**
 
 ## 1. Clone
@@ -42,7 +42,6 @@ cp frontend/.env.example frontend/.env
 | `PORT` | `5000` (or `5001` on macOS) | macOS's AirPlay Receiver holds port 5000; use 5001 or turn AirPlay Receiver off in System Settings → General → AirDrop & Handoff. |
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017/bolo` for local, or your Atlas URI | See [MongoDB](#mongodb). |
 | `JWT_SECRET`, `JWT_REFRESH_SECRET` | Any long random strings | Generate with `openssl rand -hex 32`. Don't ship the defaults. |
-| `CLOUDINARY_CLOUD_NAME`, `_API_KEY`, `_API_SECRET` | From your Cloudinary dashboard | Optional for a first run; audio upload will 500 without them. |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Your first admin login | Seeded automatically on first server boot when no admin exists yet. Password must be ≥ 6 chars. |
 | `ADMIN_NAME` | Display name | Defaults to "Super Admin". |
 | `SEED_ADMIN` | `true` | Set to `false` to disable the boot-time seed once you have an admin. |
@@ -168,7 +167,7 @@ Use the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `backend/.env`. The first admin is
 
 **Backend crashes with `EADDRINUSE :::5000` on macOS.** ControlCenter (AirPlay Receiver) holds port 5000. Either move `PORT` to 5001 in `backend/.env` (and update `VITE_API_BASE_URL` in `frontend/.env`), or turn AirPlay Receiver off.
 
-**Audio upload returns 500 "Cloudinary is not configured".** Fill in the three `CLOUDINARY_*` variables in `backend/.env` and restart the backend. Verify/edit still work without Cloudinary.
+**Audio upload writes to `backend/uploads/audio/`** — this branch stores audio on the local filesystem. Ensure the process has write access to that directory (created on first upload).
 
 **Registration returns 422 "Password must contain at least one uppercase letter".** The password validator requires uppercase + digit + minimum length. `Annotator123` works; `annotator123` does not.
 
@@ -190,7 +189,7 @@ kill <pid>
 | `npm start` | Production start (`node index.js`). |
 | `npm run dev` | Dev start with nodemon file-watching. |
 | `npm run seed` | Manual first-admin seed from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. |
-| `npm run reset` | **Nuke everything.** Drops every collection in the configured `MONGODB_URI` database **and** deletes every Cloudinary resource under the `bolo/audio/` prefix. Interactive by default (asks you to type `YES`); set `RESET_YES=1` to skip the prompt. Refuses to run against a URI containing `prod` unless you type the database name back. After it finishes, boot the backend and `SEED_ADMIN` recreates the admin from your env. |
+| `npm run reset` | **Nuke everything.** Drops every collection in the configured `MONGODB_URI` database **and** removes every audio file under `backend/uploads/audio/`. Interactive by default (asks you to type `YES`); set `RESET_YES=1` to skip the prompt. Refuses to run against a URI containing `prod` unless you type the database name back. After it finishes, boot the backend and `SEED_ADMIN` recreates the admin from your env. |
 
 ## Frontend scripts
 

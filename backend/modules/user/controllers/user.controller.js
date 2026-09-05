@@ -1,5 +1,5 @@
 const userSvc = require("../services/user.service");
-const { getAudioStream } = require("../../../services/cloudinary.service");
+const { getAudioStream } = require("../../../services/audioStorage.service");
 const { successResponse, errorResponse } = require("../../../responses/apiResponse");
 const logger = require("../../../logging/logger");
 
@@ -49,7 +49,7 @@ const uploadAudio = async (req, res, next) => {
 
     const task = await userSvc.uploadAudio(req.params.id, req.file.buffer, req.user.id, req.file.size);
 
-    return successResponse(res, "Audio uploaded successfully to Cloudinary.", {
+    return successResponse(res, "Audio uploaded successfully.", {
       taskId: task.taskId,
       status: task.status,
       audio: {
@@ -71,19 +71,20 @@ const uploadAudio = async (req, res, next) => {
 };
 
 /**
- * Stream audio from Cloudinary back to the client.
+ * Stream the annotator's recorded audio back to their browser. Reads from
+ * the local uploads directory (audio.publicId holds the relative path).
  */
 const streamAudio = async (req, res, next) => {
   try {
     const task = await userSvc.getTaskDetail(req.params.id, req.user.id);
 
-    if (!task.audio || !task.audio.url) {
+    if (!task.audio || !task.audio.publicId) {
       return errorResponse(res, "No audio recorded for this task yet.", 404);
     }
 
-    logger.info(`Audio stream | task: ${req.params.id} | user: ${req.user.id} | url: ${task.audio.url}`);
+    logger.info(`Audio stream | task: ${req.params.id} | user: ${req.user.id} | file: ${task.audio.publicId}`);
 
-    const stream = await getAudioStream(task.audio.url);
+    const stream = await getAudioStream(task.audio.publicId);
     res.setHeader("Content-Type", task.audio.contentType || "audio/wav");
     res.setHeader("Content-Disposition", `attachment; filename="${task.taskId}.wav"`);
     stream.pipe(res);

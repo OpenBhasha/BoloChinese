@@ -1,5 +1,5 @@
 const dao = require("../dao/user.dao");
-const { uploadAudio, deleteAudio } = require("../../../services/cloudinary.service");
+const { uploadAudio, deleteAudio } = require("../../../services/audioStorage.service");
 const { assertRecordingFormat } = require("../../../services/wav");
 const { measureEdit } = require("../../../services/textDiff");
 const config = require("../../../properties/config");
@@ -97,7 +97,7 @@ const uploadTaskAudio = async (taskId, audioBuffer, userId, fileSize) => {
     try {
       await deleteAudio(existing.audio.publicId);
     } catch (delErr) {
-      logger.warn(`Could not delete old Cloudinary audio for task ${taskId}: ${delErr.message}`);
+      logger.warn(`Could not delete old local audio for task ${taskId}: ${delErr.message}`);
     }
   }
 
@@ -115,7 +115,7 @@ const uploadTaskAudio = async (taskId, audioBuffer, userId, fileSize) => {
     status,
   });
   logger.info(
-    `Audio saved to Cloudinary for task ${taskId} | user: ${userId} | publicId: ${publicId} | ` +
+    `Audio saved locally for task ${taskId} | user: ${userId} | file: ${publicId} | ` +
       `${header.sampleRate}Hz/${header.bitsPerSample}bit/${header.channels}ch | ${durationSeconds}s`
   );
   return getTaskDetail(taskId, userId);
