@@ -31,9 +31,49 @@ const getUserSubmissions = async (req, res, next) => {
 
 const getAllUsers = async (req, res, next) => {
   try {
-    const users = await svc.getAllUsers();
+    const users = await svc.getAllUsers({ deleted: req.query.deleted });
     return successResponse(res, "Users retrieved.", users);
   } catch (err) { next(err); }
+};
+
+const deleteUser = async (req, res, next) => {
+  try {
+    const user = await svc.deleteUser(req.params.id, req.user.id);
+    return successResponse(res, "User deactivated.", user);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const restoreUser = async (req, res, next) => {
+  try {
+    const user = await svc.restoreUser(req.params.id);
+    return successResponse(res, "User restored.", user);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const bulkDeleteUsers = async (req, res, next) => {
+  try {
+    const result = await svc.bulkDeleteUsers(req.body?.ids || [], req.user.id);
+    return successResponse(res, `${result.modifiedCount} user(s) deactivated.`, result);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const bulkRestoreUsers = async (req, res, next) => {
+  try {
+    const result = await svc.bulkRestoreUsers(req.body?.ids || []);
+    return successResponse(res, `${result.modifiedCount} user(s) restored.`, result);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
 };
 
 const getPendingUsers = async (req, res, next) => {
@@ -369,6 +409,7 @@ module.exports = {
   getDashboard,
   getUsersProgress,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
+  deleteUser, restoreUser, bulkDeleteUsers, bulkRestoreUsers,
   getUserSubmissions,
   assignProjectToUser,
   unassignProjectFromUser,

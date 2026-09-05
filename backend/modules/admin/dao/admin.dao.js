@@ -20,12 +20,49 @@ const sortTasksByTaskId = (tasks = []) => {
 
 // ─── Users ──────────────────────────────────────────────────────────────────
 
-const getAllUsers = async () => {
-  return User.find().select("-password").sort({ createdAt: -1 });
+// { deleted: false } = active only (default listing),
+// { deleted: true }  = soft-deleted only,
+// { deleted: "all" } = both.
+const getAllUsers = async ({ deleted = false } = {}) => {
+  const filter =
+    deleted === "all" ? {} : deleted ? { deletedAt: { $ne: null } } : { deletedAt: null };
+  return User.find(filter).select("-password").sort({ createdAt: -1 });
 };
 
 const getPendingUsers = async () => {
-  return User.find({ isVerified: false }).select("-password").sort({ createdAt: -1 });
+  return User.find({ isVerified: false, deletedAt: null })
+    .select("-password")
+    .sort({ createdAt: -1 });
+};
+
+const softDeleteUser = async (userId) => {
+  return User.findByIdAndUpdate(
+    userId,
+    { deletedAt: new Date() },
+    { new: true }
+  ).select("-password");
+};
+
+const restoreUser = async (userId) => {
+  return User.findByIdAndUpdate(userId, { deletedAt: null }, { new: true }).select("-password");
+};
+
+const softDeleteUsersBulk = async (ids = []) => {
+  if (!ids.length) return { modifiedCount: 0 };
+  const res = await User.updateMany(
+    { _id: { $in: ids }, deletedAt: null },
+    { $set: { deletedAt: new Date() } }
+  );
+  return { modifiedCount: res.modifiedCount || 0, requestedCount: ids.length };
+};
+
+const restoreUsersBulk = async (ids = []) => {
+  if (!ids.length) return { modifiedCount: 0 };
+  const res = await User.updateMany(
+    { _id: { $in: ids }, deletedAt: { $ne: null } },
+    { $set: { deletedAt: null } }
+  );
+  return { modifiedCount: res.modifiedCount || 0, requestedCount: ids.length };
 };
 
 const verifyUser = async (userId) => {
@@ -480,6 +517,7 @@ const getDashboardStats = async () => {
 
 module.exports = {
   getAllUsers, getPendingUsers, verifyUser, updateUser,
+  softDeleteUser, restoreUser, softDeleteUsersBulk, restoreUsersBulk,
   getUserById, getUserByEmail,
   createProject, getAllProjects, getProjectById, getProjectByName, updateProject, deleteProject,
   createTask, addTaskToProject, addTasksToProject, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk, removeTaskFromProject,

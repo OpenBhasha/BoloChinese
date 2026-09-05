@@ -35,8 +35,70 @@ const getDashboard = async () => dao.getDashboardStats();
 const getUsersProgress = async () => dao.getPerUserProgress();
 
 // ─── Users ────────────────────────────────────────────────────────────────────
-const getAllUsers = async () => dao.getAllUsers();
+// `deleted` may be "1"/"true"/"all"/undefined - filters the listing.
+const getAllUsers = async ({ deleted } = {}) => {
+  let flag;
+  if (deleted === "all") flag = "all";
+  else if (deleted === true || deleted === "1" || deleted === "true") flag = true;
+  else flag = false;
+  return dao.getAllUsers({ deleted: flag });
+};
 const getPendingUsers = async () => dao.getPendingUsers();
+
+const deleteUser = async (userId, adminId) => {
+  const user = await dao.getUserById(userId);
+  if (!user) {
+    const err = new Error("User not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (String(user._id) === String(adminId)) {
+    const err = new Error("You can't delete your own admin account.");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (user.deletedAt) return user; // already deleted, idempotent
+  const updated = await dao.softDeleteUser(userId);
+  logger.info(`Admin ${adminId} soft-deleted user ${user.email}`);
+  return updated;
+};
+
+const restoreUser = async (userId) => {
+  const user = await dao.getUserById(userId);
+  if (!user) {
+    const err = new Error("User not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (!user.deletedAt) return user; // already active
+  const updated = await dao.restoreUser(userId);
+  logger.info(`Admin restored user ${user.email}`);
+  return updated;
+};
+
+const bulkDeleteUsers = async (ids = [], adminId) => {
+  if (!Array.isArray(ids) || !ids.length) {
+    const err = new Error("Provide at least one user id.");
+    err.statusCode = 400;
+    throw err;
+  }
+  // Never let an admin delete themselves in a bulk sweep.
+  const scoped = ids.filter((id) => String(id) !== String(adminId));
+  const result = await dao.softDeleteUsersBulk(scoped);
+  logger.info(`Admin ${adminId} bulk-deleted ${result.modifiedCount}/${ids.length} user(s)`);
+  return { ...result, requestedCount: ids.length };
+};
+
+const bulkRestoreUsers = async (ids = []) => {
+  if (!Array.isArray(ids) || !ids.length) {
+    const err = new Error("Provide at least one user id.");
+    err.statusCode = 400;
+    throw err;
+  }
+  const result = await dao.restoreUsersBulk(ids);
+  logger.info(`Admin bulk-restored ${result.modifiedCount}/${ids.length} user(s)`);
+  return { ...result, requestedCount: ids.length };
+};
 
 const getUserSubmissions = async (userId) => {
   const user = await dao.getUserById(userId);
@@ -711,6 +773,7 @@ module.exports = {
   getDashboard,
   getUsersProgress,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
+  deleteUser, restoreUser, bulkDeleteUsers, bulkRestoreUsers,
   getUserSubmissions,
   assignProjectToUser,
   unassignProjectFromUser,

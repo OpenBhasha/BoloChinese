@@ -8,13 +8,17 @@ import {
   getAllUsers,
   verifyUser,
   updateUser,
+  deleteUser,
+  restoreUser,
+  bulkDeleteUsers,
+  bulkRestoreUsers,
   getAllProjects,
   getAssignedProjectIdsByUser,
   assignProjectToUser,
   unassignProjectFromUser,
   getUsersProgress,
 } from "../../api/admin.api";
-import { CheckCircle, Clock, ShieldCheck, FolderUp, Pencil, ChevronRight } from "lucide-react";
+import { CheckCircle, Clock, ShieldCheck, FolderUp, Pencil, ChevronRight, Trash2, RotateCcw } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
 import { paginateRows } from "../../utils/pagination";
@@ -42,13 +46,20 @@ export default function AdminUsers() {
   const [progressLoading, setProgressLoading] = useState(true);
   const [progressSearch, setProgressSearch] = useState("");
   const [progressPage, setProgressPage] = useState(1);
+  const [userScope, setUserScope] = useState("active"); // "active" | "deleted"
+  const [selectedUserIds, setSelectedUserIds] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [rowBusy, setRowBusy] = useState(null);
   const desktopTableRef = useRef(null);
   const dataTableInstanceRef = useRef(null);
 
   const fetchUsers = () => {
     setLoading(true);
-    getAllUsers()
-      .then((r) => setUsers(r.data.data))
+    getAllUsers({ deleted: userScope === "deleted" ? true : undefined })
+      .then((r) => {
+        setUsers(r.data.data);
+        setSelectedUserIds(new Set());
+      })
       .catch(() => toast.error("Failed to load users"))
       .finally(() => setLoading(false));
   };
@@ -61,7 +72,68 @@ export default function AdminUsers() {
       .finally(() => setProgressLoading(false));
   };
 
-  useEffect(() => { fetchUsers(); fetchUsersProgress(); }, []);
+  useEffect(() => { fetchUsers(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [userScope]);
+  useEffect(() => { fetchUsersProgress(); }, []);
+
+  const toggleUserSelected = (id) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const allVisibleSelected =
+    users.length > 0 && users.every((u) => selectedUserIds.has(u._id));
+  const toggleAllVisible = () => {
+    setSelectedUserIds((prev) => {
+      if (allVisibleSelected) return new Set();
+      return new Set(users.map((u) => u._id));
+    });
+  };
+
+  const handleRowDelete = async (u) => {
+    if (!window.confirm(`Deactivate ${u.name || u.email}? They will be blocked from logging in.`)) return;
+    setRowBusy(u._id);
+    try {
+      await deleteUser(u._id);
+      toast.success("User deactivated.");
+      fetchUsers();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to deactivate user.");
+    } finally {
+      setRowBusy(null);
+    }
+  };
+  const handleRowRestore = async (u) => {
+    setRowBusy(u._id);
+    try {
+      await restoreUser(u._id);
+      toast.success("User restored.");
+      fetchUsers();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to restore user.");
+    } finally {
+      setRowBusy(null);
+    }
+  };
+  const handleBulk = async () => {
+    const ids = Array.from(selectedUserIds);
+    if (!ids.length) return;
+    const isDelete = userScope === "active";
+    const label = isDelete ? "deactivate" : "restore";
+    if (!window.confirm(`${label[0].toUpperCase() + label.slice(1)} ${ids.length} user(s)?`)) return;
+    setBulkBusy(true);
+    try {
+      const req = isDelete ? bulkDeleteUsers(ids) : bulkRestoreUsers(ids);
+      const res = await req;
+      toast.success(`${res.data.data.modifiedCount} user(s) ${isDelete ? "deactivated" : "restored"}.`);
+      fetchUsers();
+    } catch (err) {
+      toast.error(err.response?.data?.message || `Bulk ${label} failed.`);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const progressQuery = progressSearch.trim().toLowerCase();
   const filteredProgress = useMemo(() => {
@@ -103,7 +175,7 @@ export default function AdminUsers() {
     dataTableInstanceRef.current = new DataTable(tableElement, {
       pageLength: 10,
       lengthMenu: [10, 25, 50, 100],
-      order: [[0, "asc"]],
+      order: [[1, "asc"]],
       autoWidth: false,
       responsive: false,
       language: {
@@ -116,7 +188,8 @@ export default function AdminUsers() {
         emptyTable: "No users available",
       },
       columnDefs: [
-        { targets: -1, orderable: false, searchable: false },
+        { targets: 0, orderable: false, searchable: false }, // checkbox
+        { targets: -1, orderable: false, searchable: false }, // actions
       ],
       dom: '<"dt-toolbar"lf>rt<"dt-footer"ip>',
     });
@@ -306,6 +379,21 @@ export default function AdminUsers() {
   };
 
   const renderActionButton = (u) => {
+    // Deleted view is read-only apart from Restore.
+    if (userScope === "deleted") {
+      return (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => handleRowRestore(u)}
+            disabled={rowBusy === u._id}
+            className="btn-primary flex items-center gap-1.5 py-1.5 px-3 text-xs"
+          >
+            <RotateCcw size={13} /> {rowBusy === u._id ? "Restoring…" : "Restore"}
+          </button>
+        </div>
+      );
+    }
+
     const canVerify = u.role === "user" && !u.isVerified;
     const canAssign = u.role === "user" && u.isVerified;
 
@@ -337,6 +425,15 @@ export default function AdminUsers() {
             <FolderUp size={13} /> Assign
           </button>
         ) : null}
+
+        <button
+          onClick={() => handleRowDelete(u)}
+          disabled={rowBusy === u._id}
+          className="flex items-center gap-1.5 py-1.5 px-3 text-xs rounded-lg text-red-700 hover:bg-red-100 disabled:opacity-50"
+          title="Deactivate user"
+        >
+          <Trash2 size={13} /> {rowBusy === u._id ? "…" : "Delete"}
+        </button>
       </div>
     );
   };
@@ -344,7 +441,45 @@ export default function AdminUsers() {
   return (
     <AdminLayout>
       <h1 className="text-xl sm:text-2xl font-bold text-primary-900 mb-1">Users</h1>
-      <p className="text-primary-400 text-sm mb-6 sm:mb-8">Manage and verify registered users</p>
+      <p className="text-primary-400 text-sm mb-4">Manage and verify registered users</p>
+
+      {/* Active / Deleted tabs + bulk toolbar */}
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <div className="inline-flex rounded-lg border border-primary-100 bg-white p-1">
+          {[
+            { key: "active",  label: "Active"  },
+            { key: "deleted", label: "Deleted" },
+          ].map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setUserScope(t.key)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                userScope === t.key
+                  ? "bg-primary-700 text-white"
+                  : "text-primary-800 hover:bg-primary-50"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {selectedUserIds.size > 0 && (
+          <button
+            type="button"
+            onClick={handleBulk}
+            disabled={bulkBusy}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white disabled:opacity-60 ${
+              userScope === "active" ? "bg-red-600 hover:bg-red-700" : "bg-primary-700 hover:bg-primary-800"
+            }`}
+          >
+            {userScope === "active"
+              ? <><Trash2 size={12} /> Deactivate {selectedUserIds.size}</>
+              : <><RotateCcw size={12} /> Restore {selectedUserIds.size}</>}
+          </button>
+        )}
+      </div>
 
       {loading ? <PageSpinner /> : (
         <div className="admin-datatable card p-0 overflow-hidden">
@@ -384,6 +519,14 @@ export default function AdminUsers() {
             <table ref={desktopTableRef} className="w-full text-sm display">
               <thead>
                 <tr className="border-b border-primary-100 bg-primary-50/30">
+                  <th className="text-left px-5 py-3.5 w-8">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all visible users"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                    />
+                  </th>
                   {["Name", "Email", "Role", "Status", "Joined", "Action"].map((h) => (
                     <th key={h} className="text-left px-5 py-3.5 text-xs font-semibold text-primary-500 uppercase tracking-wide">{h}</th>
                   ))}
@@ -391,7 +534,15 @@ export default function AdminUsers() {
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <tr key={u._id} className="border-b border-primary-100 hover:bg-primary-50/40 transition">
+                  <tr key={u._id} className={`border-b border-primary-100 hover:bg-primary-50/40 transition ${selectedUserIds.has(u._id) ? "bg-primary-50" : ""}`}>
+                    <td className="px-5 py-4 w-8">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${u.name || u.email}`}
+                        checked={selectedUserIds.has(u._id)}
+                        onChange={() => toggleUserSelected(u._id)}
+                      />
+                    </td>
                     <td className="px-5 py-4 font-medium text-primary-900">
                       <div className="flex items-center gap-2">
                         <Link to={`/admin/users/${u._id}/profile`} className="hover:underline">{u.name}</Link>
@@ -400,6 +551,9 @@ export default function AdminUsers() {
                         )}
                       </div>
                       {u.username && <div className="text-[11px] text-primary-300 font-normal">@{u.username}</div>}
+                      {u.deletedAt && (
+                        <div className="text-[11px] text-red-600 font-normal mt-0.5">Deactivated {new Date(u.deletedAt).toLocaleDateString()}</div>
+                      )}
                     </td>
                     <td className="px-5 py-4 text-primary-500">
                       {u.email}
@@ -418,7 +572,7 @@ export default function AdminUsers() {
                   </tr>
                 ))}
                 {!users.length && (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-500">No users found.</td></tr>
+                  <tr><td colSpan={7} className="px-5 py-10 text-center text-slate-500">No users found.</td></tr>
                 )}
               </tbody>
             </table>

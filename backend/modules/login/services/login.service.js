@@ -20,6 +20,15 @@ const loginUser = async ({ email, password }) => {
     throw err;
   }
 
+  if (user.deletedAt) {
+    // Soft-deleted accounts get the same generic error as a bad password so
+    // we don't leak which addresses were once real.
+    logger.warn(`Blocked login for deactivated account: ${email}`);
+    const err = new Error("Invalid email or password.");
+    err.statusCode = 401;
+    throw err;
+  }
+
   if (!user.isVerified) {
     const err = new Error("Your account is pending admin verification.");
     err.statusCode = 403;

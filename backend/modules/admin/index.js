@@ -31,6 +31,11 @@ router.get("/users/pending", ctrl.getPendingUsers);
 router.get("/users/:id/submissions", [validateObjectId("id"), validate], ctrl.getUserSubmissions);
 router.patch("/users/:id/verify", [validateObjectId("id"), validate], ctrl.verifyUser);
 router.patch("/users/:id", [validateObjectId("id"), ...updateUserValidator, validate], ctrl.updateUser);
+// Soft delete + restore. `DELETE /users/:id` marks inactive (sets deletedAt).
+router.delete("/users/:id", [validateObjectId("id"), validate], ctrl.deleteUser);
+router.post("/users/:id/restore", [validateObjectId("id"), validate], ctrl.restoreUser);
+router.post("/users/bulk-delete", ctrl.bulkDeleteUsers);
+router.post("/users/bulk-restore", ctrl.bulkRestoreUsers);
 router.patch(
   "/projects/:projectId/assign/:userId",
   [validateObjectId("projectId"), validateObjectId("userId"), validate],

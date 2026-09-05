@@ -74,12 +74,21 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Soft delete. Non-null means the account is inactive - blocked from
+    // login, hidden from the default Users listing, but the record and its
+    // submissions stay so the admin can restore or audit.
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
 
 // Admin listings frequently split by role (user vs admin) and verified status.
 userSchema.index({ role: 1, isVerified: 1 });
+// Filters that split active vs deleted users.
+userSchema.index({ deletedAt: 1 });
 
 // Hash password before save
 userSchema.pre("save", async function (next) {
