@@ -10,7 +10,6 @@ import AdminUserDetail from "./pages/admin/UserDetail";
 import AdminProjects from "./pages/admin/Projects";
 import ProjectDetail from "./pages/admin/ProjectDetail";
 import UserDashboard from "./pages/user/Dashboard";
-import UserProjectTasks from "./pages/user/ProjectTasks";
 import TaskDetail from "./pages/user/TaskDetail";
 import UserProfile from "./pages/user/UserProfile";
 
@@ -60,7 +59,6 @@ export default function App() {
           {/* User */}
           <Route path="/user" element={<RequireAuth role="user"><UserDashboard /></RequireAuth>} />
           <Route path="/user/profile" element={<RequireAuth role="user"><UserProfile /></RequireAuth>} />
-          <Route path="/user/projects/:id" element={<RequireAuth role="user"><UserProjectTasks /></RequireAuth>} />
           <Route path="/user/tasks/:id" element={<RequireAuth role="user"><TaskDetail /></RequireAuth>} />
 
           {/* Root redirect */}

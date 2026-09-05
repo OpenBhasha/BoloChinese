@@ -249,18 +249,19 @@ export default function UserProfile() {
               const total = stats.total || 0;
               const done = (stats.completed || 0) + (stats.erroneous || 0);
               const pct = total ? Math.round((done / total) * 100) : 0;
-              const projectHref = isAdminView
-                ? `/admin/projects/${p._id}`
-                : `/user/projects/${p._id}`;
               return (
                 <li key={p._id} className="py-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <Link
-                      to={projectHref}
-                      className="text-sm font-medium text-primary-800 hover:text-primary-900 inline-flex items-center gap-1.5"
-                    >
-                      {p.name} <ExternalLink size={12} />
-                    </Link>
+                    {isAdminView ? (
+                      <Link
+                        to={`/admin/projects/${p._id}`}
+                        className="text-sm font-medium text-primary-800 hover:text-primary-900 inline-flex items-center gap-1.5"
+                      >
+                        {p.name} <ExternalLink size={12} />
+                      </Link>
+                    ) : (
+                      <p className="text-sm font-medium text-primary-900">{p.name}</p>
+                    )}
                     <div className="mt-1 w-64 max-w-full h-1.5 rounded-full bg-black/10 overflow-hidden">
                       <div className="h-full bg-primary-700" style={{ width: `${pct}%` }} />
                     </div>

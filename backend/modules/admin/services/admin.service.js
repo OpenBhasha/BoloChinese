@@ -60,7 +60,7 @@ const provisionDedicatedProject = async (user, adminId) => {
   if (!project) {
     project = await dao.createProject({
       name: projectName,
-      description: `Personal project for ${user.name} (${user.email}). Upload the task CSV here.`,
+      description: `Text Verification & Audio Data Collection for ${user.name}`,
       createdBy: adminId,
     });
   }

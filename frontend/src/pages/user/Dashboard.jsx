@@ -2,14 +2,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import UserLayout from "../../components/layout/UserLayout";
 import { getMyProjects, getProjectTasks } from "../../api/user.api";
-import { EllipsisVertical, FolderOpen, Mic2 } from "lucide-react";
+import { FolderOpen, Mic2 } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
 
 export default function UserDashboard() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hoverMenuProjectId, setHoverMenuProjectId] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -25,7 +24,7 @@ export default function UserDashboard() {
       const tasks = r.data.data.tasks || [];
 
       if (tasks.length === 0) {
-        navigate(`/user/projects/${projectId}`);
+        toast("This project has no tasks yet.");
         return;
       }
 
@@ -69,36 +68,6 @@ export default function UserDashboard() {
                           <FolderOpen size={16} className="text-black/80" />
                         </div>
                         <p className="text-base font-semibold text-black line-clamp-1">{p.name}</p>
-                      </div>
-
-                      <div
-                        className="relative"
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseEnter={() => setHoverMenuProjectId(p._id)}
-                        onMouseLeave={() => setHoverMenuProjectId(null)}
-                      >
-                        <button
-                          type="button"
-                          className="w-8 h-8 rounded-lg hover:bg-black/10 text-black/70 hover:text-black flex items-center justify-center transition"
-                          aria-label="Project options"
-                        >
-                          <EllipsisVertical size={16} />
-                        </button>
-
-                        {hoverMenuProjectId === p._id && (
-                          <div className="absolute right-0 top-9 z-20 min-w-40 rounded-xl border border-black/10 bg-white shadow-lg py-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setHoverMenuProjectId(null);
-                                navigate(`/user/projects/${p._id}`);
-                              }}
-                              className="w-full text-left px-3 py-2 text-sm text-black/80 hover:bg-black/5 transition"
-                            >
-                              View Task
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>
                     <p className="text-sm text-black/75 mb-3 line-clamp-2">{p.description || "No description"}</p>
