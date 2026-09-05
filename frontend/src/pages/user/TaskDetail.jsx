@@ -246,6 +246,7 @@ export default function TaskDetail() {
           key={task._id}
           task={task}
           nextTask={nextTask}
+          prevTask={prevTask}
           onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
           onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
           // Keep the projectTasks list in sync with the current task's

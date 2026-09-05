@@ -72,6 +72,7 @@ export default function TranscriptVerification({
   onTaskUpdate,
   onProjectTaskPatch,
   nextTask,
+  prevTask,
   onNavigate,
   readOnly = false,
 }) {
@@ -140,11 +141,13 @@ export default function TranscriptVerification({
       // annotator has moved to another task.
       onProjectTaskPatch?.(task._id, { status: "discarded" });
       toast.success("Task discarded.");
-      if (nextTask && onNavigate) {
-        onNavigate(nextTask._id);
-      } else {
-        setStep("discarded");
-        if (!nextTask) toast("You are on the last task.");
+      // Move the annotator on: prefer the next task; if there is no next
+      // (they discarded the last one), fall back to the previous task.
+      // If neither exists it's a single-task project and the parent will
+      // render ProjectFinished off the patched projectTasks list.
+      if (onNavigate) {
+        if (nextTask) onNavigate(nextTask._id);
+        else if (prevTask) onNavigate(prevTask._id);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to discard task.");
