@@ -50,26 +50,17 @@ function TaskNavBar({ prevTask, nextTask, onNavigate, disableNext }) {
 }
 
 // Full-page success card shown when every task in the project is terminal.
-// Auto-redirects to /user/profile after a short delay so the annotator lands
-// somewhere useful; also gives them a manual button in case they want to
-// skip the wait.
-function ProjectFinished({ onDone }) {
-  useEffect(() => {
-    const t = window.setTimeout(onDone, 3500);
-    return () => window.clearTimeout(t);
-  }, [onDone]);
+// No redirect - the annotator can just close the tab. "That's it."
+function ProjectFinished() {
   return (
     <div className="card flex flex-col items-center text-center py-16 max-w-lg mx-auto mt-16">
       <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
         <PartyPopper size={28} className="text-emerald-700" />
       </div>
       <h1 className="text-2xl font-bold text-primary-900 mb-2">Project finished</h1>
-      <p className="text-sm text-black/70 mb-6">
-        You've completed every task in this project. Taking you to your profile…
+      <p className="text-sm text-black/70">
+        That's it. You've completed every task in this project. You can close this tab now.
       </p>
-      <button type="button" onClick={onDone} className="btn-primary">
-        Go to profile now
-      </button>
     </div>
   );
 }
@@ -210,7 +201,7 @@ export default function TaskDetail() {
   if (projectFinished) {
     return (
       <UserLayout>
-        <ProjectFinished onDone={() => navigate("/user/profile")} />
+        <ProjectFinished />
       </UserLayout>
     );
   }
@@ -257,6 +248,15 @@ export default function TaskDetail() {
           nextTask={nextTask}
           onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
           onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
+          // Keep the projectTasks list in sync with the current task's
+          // status so the "N/M Completed" progress bar updates immediately
+          // after Discard (which otherwise waits until the annotator
+          // navigates far enough to trigger a refetch).
+          onProjectTaskPatch={(taskId, patch) =>
+            setProjectTasks((prev) =>
+              prev.map((t) => (t._id === taskId ? { ...t, ...patch } : t))
+            )
+          }
           readOnly={readOnly}
         />
 

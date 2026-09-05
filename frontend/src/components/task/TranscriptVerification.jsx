@@ -67,7 +67,14 @@ function ScriptPanels({ chinese, pinyin, editable, onChineseChange, onPinyinChan
  *   ready-to-record - read-only review; the recorder unlocks
  *   discarded       - terminal, undoable
  */
-export default function TranscriptVerification({ task, onTaskUpdate, nextTask, onNavigate, readOnly = false }) {
+export default function TranscriptVerification({
+  task,
+  onTaskUpdate,
+  onProjectTaskPatch,
+  nextTask,
+  onNavigate,
+  readOnly = false,
+}) {
   const [step, setStep] = useState(() => deriveStep(task));
   const [verifying, setVerifying] = useState(false);
   const [chineseDraft, setChineseDraft] = useState(task.correctedChineseTranscript || task.chineseTranscript);
@@ -128,6 +135,10 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
     try {
       await discardTask(task._id);
       onTaskUpdate({ discarded: { flagged: true, discardedAt: new Date().toISOString() }, status: "discarded" });
+      // Patch the parent's projectTasks list too so the "N/M Completed"
+      // progress bar reflects the discard right away, even before the
+      // annotator has moved to another task.
+      onProjectTaskPatch?.(task._id, { status: "discarded" });
       toast.success("Task discarded.");
       if (nextTask && onNavigate) {
         onNavigate(nextTask._id);
