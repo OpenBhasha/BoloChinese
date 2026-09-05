@@ -177,25 +177,6 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
     }
   };
 
-  const handleDiscard = async () => {
-    setDiscarding(true);
-    try {
-      await discardTask(task._id);
-      onTaskUpdate({ discarded: { flagged: true, discardedAt: new Date().toISOString() }, status: "discarded" });
-      toast.success("Task discarded.");
-      if (nextTask && onNavigate) {
-        onNavigate(nextTask._id);
-      } else {
-        setStep("discarded");
-        if (!nextTask) toast("You are on the last task.");
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to discard task.");
-    } finally {
-      setDiscarding(false);
-    }
-  };
-
   if (step === "discarded") {
     return (
       <div className="card border-red-300 bg-red-50">
@@ -268,14 +249,6 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {savingCorrection ? "Submitting…" : "Submit"}
-          </button>
-          <button
-            type="button"
-            onClick={handleDiscard}
-            disabled={savingCorrection || discarding}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-          >
-            <Trash2 size={14} /> {discarding ? "Discarding…" : "Discard"}
           </button>
         </div>
       </div>
