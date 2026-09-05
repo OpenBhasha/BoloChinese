@@ -354,7 +354,7 @@ export default function AdminUsers() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-medium text-primary-900 truncate flex items-center gap-1.5">
-                      {u.name}
+                      <Link to={`/admin/users/${u._id}/profile`} className="hover:underline">{u.name}</Link>
                       {u.identityFlagged && (
                         <span className="badge-pending shrink-0" title={u.identityFlagReason || "Identity flagged"}>⚠ Identity</span>
                       )}
@@ -394,7 +394,7 @@ export default function AdminUsers() {
                   <tr key={u._id} className="border-b border-primary-100 hover:bg-primary-50/40 transition">
                     <td className="px-5 py-4 font-medium text-primary-900">
                       <div className="flex items-center gap-2">
-                        <span>{u.name}</span>
+                        <Link to={`/admin/users/${u._id}/profile`} className="hover:underline">{u.name}</Link>
                         {u.identityFlagged && (
                           <span className="badge-pending" title={u.identityFlagReason || "Identity flagged"}>⚠ Identity</span>
                         )}
@@ -443,7 +443,7 @@ export default function AdminUsers() {
 
           <div className="sm:hidden divide-y divide-surface-border">
             {paginatedProgress.map((u) => (
-              <Link key={u._id} to={`/admin/users/${u._id}`} className="block p-4 space-y-2 hover:bg-primary-50/40">
+              <Link key={u._id} to={`/admin/users/${u._id}/profile`} className="block p-4 space-y-2 hover:bg-primary-50/40">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium text-primary-900 truncate">{u.name}</p>
                   <ChevronRight size={16} className="text-primary-300 shrink-0" />
@@ -480,7 +480,7 @@ export default function AdminUsers() {
                   <tr key={u._id} className="border-b border-primary-100 hover:bg-primary-50/40 transition">
                     <td className="px-5 py-4 font-medium text-primary-900 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <span>{u.name}</span>
+                        <Link to={`/admin/users/${u._id}/profile`} className="hover:underline">{u.name}</Link>
                         {u.identityFlagged && (
                           <span className="badge-pending" title={u.identityFlagReason || "Identity flagged"}>⚠</span>
                         )}
@@ -496,9 +496,14 @@ export default function AdminUsers() {
                     <td className="px-5 py-4 text-primary-500 whitespace-nowrap">{formatDuration(u.audioDurationSeconds)}</td>
                     <td className="px-5 py-4 font-semibold text-primary-900">{u.progressPercent}%</td>
                     <td className="px-5 py-4">
-                      <Link to={`/admin/users/${u._id}`} className="text-xs font-semibold text-primary-700 hover:text-primary-900 inline-flex items-center gap-1">
-                        View Details <ChevronRight size={14} />
-                      </Link>
+                      <div className="flex items-center gap-3">
+                        <Link to={`/admin/users/${u._id}/profile`} className="text-xs font-semibold text-primary-700 hover:text-primary-900 inline-flex items-center gap-1">
+                          Profile
+                        </Link>
+                        <Link to={`/admin/users/${u._id}`} className="text-xs font-semibold text-primary-500 hover:text-primary-800 inline-flex items-center gap-1">
+                          Submissions <ChevronRight size={14} />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

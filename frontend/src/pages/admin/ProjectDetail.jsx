@@ -1109,11 +1109,11 @@ export default function ProjectDetail() {
               {activeView === ADMIN_PROJECT_VIEWS.TASKS ? (
                 <>
                   {/* Filter chips + bulk-delete toolbar */}
-                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <div className="flex flex-wrap items-center gap-2 mb-5 pb-4 border-b border-primary-100/70">
                     {[
                       { key: "all", label: "All" },
                       { key: "pending", label: "Pending" },
-                      { key: "in-progress", label: "In-progress" },
+                      { key: "in-progress", label: "In progress" },
                       { key: "verified", label: "Verified" },
                       { key: "corrected", label: "Corrected" },
                       { key: "completed", label: "Completed" },
@@ -1127,16 +1127,20 @@ export default function ProjectDetail() {
                           key={f.key}
                           type="button"
                           onClick={() => setStatusFilter(f.key)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition ${
+                          className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition whitespace-nowrap ${
                             isActive
-                              ? "bg-primary-700 text-white"
-                              : "bg-white border border-primary-100 text-primary-800 hover:bg-primary-50"
+                              ? "bg-primary-700 border-primary-700 text-white shadow-sm"
+                              : "bg-white border-primary-200 text-primary-800 hover:bg-primary-50 hover:border-primary-400"
                           }`}
                         >
-                          {f.label}
-                          <span className={`inline-block min-w-[18px] text-center rounded-full px-1.5 ${
-                            isActive ? "bg-white/20 text-white" : "bg-primary-100 text-primary-800"
-                          }`}>{count}</span>
+                          <span>{f.label}</span>
+                          <span
+                            className={`inline-flex items-center justify-center min-w-[20px] h-5 rounded-full text-[10px] font-bold px-1.5 ${
+                              isActive ? "bg-white/25 text-white" : "bg-primary-100 text-primary-800"
+                            }`}
+                          >
+                            {count}
+                          </span>
                         </button>
                       );
                     })}
@@ -1148,7 +1152,7 @@ export default function ProjectDetail() {
                         type="button"
                         onClick={() => setConfirmBulkDelete(true)}
                         disabled={bulkDeleting}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
                       >
                         <Trash2 size={12} /> Delete selected ({selectedTaskIds.size})
                       </button>
