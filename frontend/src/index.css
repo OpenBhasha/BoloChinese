@@ -50,17 +50,54 @@
     color: #fff !important;
   }
 
-  button[class*="bg-primary-"],
-  button[class*="bg-emerald-"],
-  button[class*="bg-green-"],
-  button[class*="bg-lime-"] {
-    color: #fff !important;
-  }
-
-  button[class*="bg-primary-"] *,
-  button[class*="bg-emerald-"] *,
-  button[class*="bg-green-"] *,
-  button[class*="bg-lime-"] * {
+  /* Dark surfaces get white text (and their descendants inherit).
+     The global "* { color: #000 !important }" rule above wins over Tailwind's
+     text-white utilities, so any element painted with a dark Tailwind
+     background needs an explicit override here to stay legible.
+     [class~="X"] matches whole space-separated tokens - "bg-red-6" would
+     have false-matched "bg-red-600" AND "bg-red-6"-anything-else, so we
+     enumerate the darker shade steps (500-900) explicitly. */
+  [class~="bg-primary-500"], [class~="bg-primary-500"] *,
+  [class~="bg-primary-600"], [class~="bg-primary-600"] *,
+  [class~="bg-primary-700"], [class~="bg-primary-700"] *,
+  [class~="bg-primary-800"], [class~="bg-primary-800"] *,
+  [class~="bg-primary-900"], [class~="bg-primary-900"] *,
+  [class~="bg-emerald-500"], [class~="bg-emerald-500"] *,
+  [class~="bg-emerald-600"], [class~="bg-emerald-600"] *,
+  [class~="bg-emerald-700"], [class~="bg-emerald-700"] *,
+  [class~="bg-emerald-800"], [class~="bg-emerald-800"] *,
+  [class~="bg-emerald-900"], [class~="bg-emerald-900"] *,
+  [class~="bg-green-500"],   [class~="bg-green-500"] *,
+  [class~="bg-green-600"],   [class~="bg-green-600"] *,
+  [class~="bg-green-700"],   [class~="bg-green-700"] *,
+  [class~="bg-green-800"],   [class~="bg-green-800"] *,
+  [class~="bg-green-900"],   [class~="bg-green-900"] *,
+  [class~="bg-lime-600"],    [class~="bg-lime-600"] *,
+  [class~="bg-lime-700"],    [class~="bg-lime-700"] *,
+  [class~="bg-lime-800"],    [class~="bg-lime-800"] *,
+  [class~="bg-red-500"],     [class~="bg-red-500"] *,
+  [class~="bg-red-600"],     [class~="bg-red-600"] *,
+  [class~="bg-red-700"],     [class~="bg-red-700"] *,
+  [class~="bg-red-800"],     [class~="bg-red-800"] *,
+  [class~="bg-red-900"],     [class~="bg-red-900"] *,
+  [class~="bg-blue-500"],    [class~="bg-blue-500"] *,
+  [class~="bg-blue-600"],    [class~="bg-blue-600"] *,
+  [class~="bg-blue-700"],    [class~="bg-blue-700"] *,
+  [class~="bg-blue-800"],    [class~="bg-blue-800"] *,
+  [class~="bg-blue-900"],    [class~="bg-blue-900"] *,
+  [class~="bg-amber-600"],   [class~="bg-amber-600"] *,
+  [class~="bg-amber-700"],   [class~="bg-amber-700"] *,
+  [class~="bg-amber-800"],   [class~="bg-amber-800"] *,
+  [class~="bg-amber-900"],   [class~="bg-amber-900"] *,
+  [class~="bg-slate-600"],   [class~="bg-slate-600"] *,
+  [class~="bg-slate-700"],   [class~="bg-slate-700"] *,
+  [class~="bg-slate-800"],   [class~="bg-slate-800"] *,
+  [class~="bg-slate-900"],   [class~="bg-slate-900"] *,
+  [class~="bg-gray-600"],    [class~="bg-gray-600"] *,
+  [class~="bg-gray-700"],    [class~="bg-gray-700"] *,
+  [class~="bg-gray-800"],    [class~="bg-gray-800"] *,
+  [class~="bg-gray-900"],    [class~="bg-gray-900"] *,
+  [class~="bg-black"],       [class~="bg-black"] * {
     color: #fff !important;
   }
 
