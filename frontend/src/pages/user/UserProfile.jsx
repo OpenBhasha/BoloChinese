@@ -19,6 +19,12 @@ const formatDuration = (seconds) => {
   return `${hrs}h ${rMin}m`;
 };
 
+const formatMs = (ms) => {
+  const total = Math.max(0, Math.round(Number(ms) || 0));
+  if (!total) return "-";
+  return formatDuration(total / 1000);
+};
+
 /**
  * Shared profile page. Rendered at two routes:
  *   /user/profile           → annotator viewing themselves (self-edit allowed)
@@ -232,6 +238,25 @@ export default function UserProfile() {
             <p className="text-lg font-bold text-primary-900">{s.value}</p>
           </div>
         ))}
+      </div>
+
+      {/* Time per task */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        {[
+          { label: "Avg time / task", value: formatMs(analytics.timePerTask?.avgMs) },
+          { label: "Fastest task", value: formatMs(analytics.timePerTask?.minMs) },
+          { label: "Slowest task", value: formatMs(analytics.timePerTask?.maxMs) },
+        ].map((s) => (
+          <div key={s.label} className="card">
+            <p className="text-xs uppercase tracking-wide text-black/50 mb-1">{s.label}</p>
+            <p className="text-lg font-bold text-primary-900">{s.value}</p>
+          </div>
+        ))}
+        {analytics.timePerTask && analytics.timePerTask.samples > 0 && (
+          <p className="col-span-3 text-[11px] text-black/50 -mt-1 ml-1">
+            Across {analytics.timePerTask.samples} task{analytics.timePerTask.samples === 1 ? "" : "s"} with tracked time.
+          </p>
+        )}
       </div>
 
       {/* Projects */}

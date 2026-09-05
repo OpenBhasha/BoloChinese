@@ -342,7 +342,7 @@ const updateUserSelfFields = async (userId, patch) => {
 // user-profile view.
 const getUserSubmissionAggregate = async (userId) => {
   const submissions = await TaskSubmission.find({ userId })
-    .select("status audio.durationSeconds editCharCount")
+    .select("status audio.durationSeconds editCharCount timeSpentMs")
     .lean();
 
   const stats = {
@@ -359,6 +359,14 @@ const getUserSubmissionAggregate = async (userId) => {
   let audioSeconds = 0;
   let totalEditChars = 0;
 
+  // Per-task time distribution. We only consider tasks with tracked time
+  // (> 0 ms) so the average isn't dragged to zero by rows the client never
+  // reported time for.
+  let timeSum = 0;
+  let timeSamples = 0;
+  let timeMin = Infinity;
+  let timeMax = 0;
+
   submissions.forEach((s) => {
     if (s.status === "completed") stats.completed += 1;
     else if (s.status === "corrected") stats.corrected += 1;
@@ -374,12 +382,31 @@ const getUserSubmissionAggregate = async (userId) => {
       audioSeconds += seconds;
     }
     totalEditChars += Number(s.editCharCount || 0);
+
+    const ms = Number(s.timeSpentMs || 0);
+    if (ms > 0) {
+      timeSum += ms;
+      timeSamples += 1;
+      if (ms < timeMin) timeMin = ms;
+      if (ms > timeMax) timeMax = ms;
+    }
   });
+
+  const timePerTask = timeSamples
+    ? {
+        samples: timeSamples,
+        avgMs: Math.round(timeSum / timeSamples),
+        minMs: timeMin,
+        maxMs: timeMax,
+        totalMs: timeSum,
+      }
+    : { samples: 0, avgMs: 0, minMs: 0, maxMs: 0, totalMs: 0 };
 
   return {
     ...stats,
     audio: { count: audioCount, totalSeconds: Math.round(audioSeconds) },
     totalEditChars,
+    timePerTask,
   };
 };
 

@@ -148,10 +148,19 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
       return;
     }
 
-    // One-sided edits are never allowed - Chinese and Pinyin must move
-    // together (or not at all).
     const chineseChanged = chineseEdit.distance > 0;
     const pinyinChanged = pinyinEdit.distance > 0;
+
+    // No-op submission (draft matches original) - the annotator opened the
+    // editor but didn't change anything. Nudge them to make a change or
+    // discard the task instead.
+    if (!chineseChanged && !pinyinChanged) {
+      toast.error("No changes yet. Edit the Chinese and Pinyin, or use Discard to drop this task.");
+      return;
+    }
+
+    // One-sided edits are never allowed - Chinese and Pinyin must move
+    // together (or not at all).
     if (chineseChanged !== pinyinChanged) {
       const other = chineseChanged ? "Pinyin" : "Chinese";
       toast.error(`Edit the ${other} text too - both sides must be updated together.`);
