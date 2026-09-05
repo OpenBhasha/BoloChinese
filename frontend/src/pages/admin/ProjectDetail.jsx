@@ -12,6 +12,7 @@ import {
   bulkDeleteTasks,
   getTaskById,
   getTaskSubmissions,
+  getProjectSubmissions,
   streamSubmissionAudio,
   deleteSubmission,
   uploadTasksImport,
@@ -116,34 +117,31 @@ export default function ProjectDetail() {
     let ignore = false;
     setSubmissionsLoading(true);
 
-    const loadTaskSubmissions = async () => {
+    // Single project-scoped fetch replaces the old
+    // tasks.map(t => getTaskSubmissions(t._id)) N+1 pattern - one API call
+    // regardless of task count, groups on the client.
+    const loadProjectSubmissions = async () => {
       try {
-        const entries = await Promise.all(
-          tasks.map(async (task) => {
-            try {
-              const res = await getTaskSubmissions(task._id);
-              return [task._id, res.data.data || []];
-            } catch {
-              return [task._id, []];
-            }
-          })
-        );
-
+        const res = await getProjectSubmissions(id);
         if (ignore) return;
-
+        const all = res.data.data || [];
         const nextSubmissions = {};
-        entries.forEach(([taskId, submissions]) => {
-          nextSubmissions[taskId] = submissions;
+        all.forEach((submission) => {
+          const taskKey = submission.taskId?._id
+            ? String(submission.taskId._id)
+            : String(submission.taskId);
+          if (!nextSubmissions[taskKey]) nextSubmissions[taskKey] = [];
+          nextSubmissions[taskKey].push(submission);
         });
         setSubmissionsByTaskId(nextSubmissions);
+      } catch {
+        if (!ignore) setSubmissionsByTaskId({});
       } finally {
-        if (!ignore) {
-          setSubmissionsLoading(false);
-        }
+        if (!ignore) setSubmissionsLoading(false);
       }
     };
 
-    loadTaskSubmissions();
+    loadProjectSubmissions();
 
     return () => {
       ignore = true;

@@ -356,6 +356,17 @@ const getTaskSubmissions = async (taskId) => {
     .sort({ updatedAt: -1 });
 };
 
+// Every submission for a project, populated for the admin project view's
+// Submissions/Flags/Erroneous tabs. Replaces the old N+1 pattern of one
+// getTaskSubmissions() call per task.
+const getSubmissionsByProject = async (projectId) => {
+  return TaskSubmission.find({ projectId })
+    .populate("taskId", "taskId dialogueId chineseTranscript pinyin")
+    .populate("userId", "name email username")
+    .sort({ updatedAt: -1 })
+    .lean();
+};
+
 // Every submission (any status - partial work included) for a result export.
 const getSubmissionsForExport = async (filter = {}) => {
   return TaskSubmission.find(filter)
@@ -364,6 +375,19 @@ const getSubmissionsForExport = async (filter = {}) => {
     .populate("userId", "name email username")
     .sort({ updatedAt: -1 })
     .lean();
+};
+
+// Cursor variant for streaming exports - memory stays flat regardless of
+// dataset size. Each doc is emitted as a plain object; the writer serialises
+// row-by-row to the response.
+const getSubmissionsExportCursor = (filter = {}) => {
+  return TaskSubmission.find(filter)
+    .populate("taskId", "taskId dialogueId chineseTranscript pinyin createdAt")
+    .populate("projectId", "name")
+    .populate("userId", "name email username")
+    .sort({ updatedAt: -1 })
+    .lean()
+    .cursor();
 };
 
 const getTaskSubmissionById = async (submissionId) => {
@@ -459,7 +483,9 @@ module.exports = {
   getAssignedProjectIdsByUser,
   getProjectAssignees,
   getTaskSubmissions,
+  getSubmissionsByProject,
   getSubmissionsForExport,
+  getSubmissionsExportCursor,
   getTaskSubmissionById,
   deleteTaskSubmission,
   addAdminCommentToFlag,

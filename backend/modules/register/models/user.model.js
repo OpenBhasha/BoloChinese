@@ -78,6 +78,9 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Admin listings frequently split by role (user vs admin) and verified status.
+userSchema.index({ role: 1, isVerified: 1 });
+
 // Hash password before save
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();

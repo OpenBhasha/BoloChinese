@@ -243,6 +243,16 @@ const deleteTask = async (req, res, next) => {
   }
 };
 
+const getSubmissionsByProject = async (req, res, next) => {
+  try {
+    const submissions = await svc.getSubmissionsByProject(req.params.projectId);
+    return successResponse(res, "Project submissions retrieved.", submissions);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 const getTaskSubmissions = async (req, res, next) => {
   try {
     const submissions = await svc.getTaskSubmissions(req.params.id);
@@ -282,42 +292,61 @@ const deleteSubmission = async (req, res, next) => {
   }
 };
 
-// ─── Result export ───────────────────────────────────────────────────────────
+// ─── Result export (streaming) ───────────────────────────────────────────────
+// Row-by-row streaming keeps memory flat regardless of dataset size. First
+// byte reaches the client in milliseconds, and downloads of hundreds of
+// thousands of rows no longer OOM the Node process or block other requests
+// behind one giant 30+ second call.
+const { csvHeaderLine, csvRowLine } = require("../../../services/csv");
+
+const streamCsvExport = async (res, scope) => {
+  const { filename, columns, cursor, toRow } = await svc.prepareStreamingExport(scope);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  // UTF-8 BOM so Excel opens Chinese content correctly.
+  res.write("\uFEFF");
+  res.write(csvHeaderLine(columns));
+
+  let count = 0;
+  try {
+    for await (const submission of cursor) {
+      res.write(csvRowLine(columns, toRow(submission)));
+      count += 1;
+    }
+  } catch (err) {
+    logger.error(`Export stream failed after ${count} rows: ${err.message}`);
+    res.end();
+    return;
+  }
+  logger.info(`Results exported (streamed) | rows: ${count} | file: ${filename}`);
+  res.end();
+};
+
 const exportResults = async (req, res, next) => {
   try {
     const { projectId, userId } = req.query;
-    const { filename, csv } = await svc.exportResults({ projectId, userId });
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    // BOM so Excel opens the UTF-8 (Chinese) content correctly.
-    return res.send("\uFEFF" + csv);
+    return await streamCsvExport(res, { projectId, userId });
   } catch (err) {
-    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
-    next(err);
+    if (err.statusCode && !res.headersSent) return errorResponse(res, err.message, err.statusCode);
+    if (!res.headersSent) next(err);
   }
 };
 
 const exportProjectResults = async (req, res, next) => {
   try {
-    const { filename, csv } = await svc.exportResults({ projectId: req.params.projectId });
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    return res.send("\uFEFF" + csv);
+    return await streamCsvExport(res, { projectId: req.params.projectId });
   } catch (err) {
-    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
-    next(err);
+    if (err.statusCode && !res.headersSent) return errorResponse(res, err.message, err.statusCode);
+    if (!res.headersSent) next(err);
   }
 };
 
 const exportUserResults = async (req, res, next) => {
   try {
-    const { filename, csv } = await svc.exportResults({ userId: req.params.id });
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    return res.send("\uFEFF" + csv);
+    return await streamCsvExport(res, { userId: req.params.id });
   } catch (err) {
-    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
-    next(err);
+    if (err.statusCode && !res.headersSent) return errorResponse(res, err.message, err.statusCode);
+    if (!res.headersSent) next(err);
   }
 };
 
@@ -349,6 +378,7 @@ module.exports = {
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
   createTask, uploadTasksImport, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
   getTaskSubmissions,
+  getSubmissionsByProject,
   streamSubmissionAudio,
   deleteSubmission,
   addAdminCommentToFlag,

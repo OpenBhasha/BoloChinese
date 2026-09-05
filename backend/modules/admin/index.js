@@ -77,6 +77,11 @@ router.get(
   ctrl.getProjectAssignees
 );
 router.get(
+  "/projects/:projectId/submissions",
+  [validateObjectId("projectId"), validate],
+  ctrl.getSubmissionsByProject
+);
+router.get(
   "/users/:id/profile",
   [validateObjectId("id"), validate],
   ctrl.getUserProfile

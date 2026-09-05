@@ -22,4 +22,12 @@ const toCsv = (columns, rows) => {
   return [head, ...body].join("\r\n");
 };
 
-module.exports = { toCsv };
+// Row-at-a-time helpers for streaming exports. The header ends with CRLF; each
+// row also ends with CRLF so caller can just concatenate + res.write().
+const csvHeaderLine = (columns) =>
+  columns.map((c) => escapeCell(c.header)).join(",") + "\r\n";
+
+const csvRowLine = (columns, row) =>
+  columns.map((c) => escapeCell(row[c.key])).join(",") + "\r\n";
+
+module.exports = { toCsv, csvHeaderLine, csvRowLine };

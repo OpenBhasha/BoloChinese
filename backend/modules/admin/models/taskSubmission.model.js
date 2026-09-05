@@ -111,5 +111,13 @@ const taskSubmissionSchema = new mongoose.Schema(
 );
 
 taskSubmissionSchema.index({ taskId: 1, userId: 1 }, { unique: true });
+// Compound indexes for the hot query patterns:
+//   - project view: TaskSubmission.find({ projectId, status? }).sort({ updatedAt: -1 })
+//   - user's own progress: TaskSubmission.find({ userId, status? })
+//   - "user + project" filter for admin exports and per-user progress
+taskSubmissionSchema.index({ projectId: 1, status: 1 });
+taskSubmissionSchema.index({ projectId: 1, updatedAt: -1 });
+taskSubmissionSchema.index({ userId: 1, projectId: 1 });
+taskSubmissionSchema.index({ userId: 1, status: 1 });
 
 module.exports = mongoose.model("TaskSubmission", taskSubmissionSchema);

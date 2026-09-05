@@ -231,6 +231,16 @@ const getTaskSubmissions = async (taskId) => {
   return dao.getTaskSubmissions(taskId);
 };
 
+const getSubmissionsByProject = async (projectId) => {
+  const project = await dao.getProjectById(projectId);
+  if (!project) {
+    const err = new Error("Project not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  return dao.getSubmissionsByProject(projectId);
+};
+
 const getTaskSubmissionById = async (submissionId) => {
   const submission = await dao.getTaskSubmissionById(submissionId);
   if (!submission) {
@@ -654,6 +664,47 @@ const exportResults = async ({ projectId, userId } = {}) => {
   return { filename: `bolo-results-${scopeLabel}-${stamp}.csv`, csv, rowCount: submissions.length };
 };
 
+// Streaming variant used by the controllers. Instead of loading every
+// submission into memory and serialising to a single string, this returns
+// the filter, filename, and cursor so the controller can pipe row-by-row to
+// the HTTP response. Memory stays flat regardless of dataset size.
+const prepareStreamingExport = async ({ projectId, userId } = {}) => {
+  const filter = {};
+  let scopeLabel = "all";
+
+  if (projectId) {
+    const project = await dao.getProjectById(projectId);
+    if (!project) {
+      const err = new Error("Project not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+    filter.projectId = projectId;
+    scopeLabel = (project.name || "project").replace(/[^a-z0-9_-]+/gi, "-");
+  }
+
+  if (userId) {
+    const user = await dao.getUserById(userId);
+    if (!user) {
+      const err = new Error("User not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+    filter.userId = userId;
+    scopeLabel = (user.username || user.name || "user").replace(/[^a-z0-9_-]+/gi, "-");
+  }
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  return {
+    filter,
+    scopeLabel,
+    filename: `bolo-results-${scopeLabel}-${stamp}.csv`,
+    columns: EXPORT_COLUMNS,
+    cursor: dao.getSubmissionsExportCursor(filter),
+    toRow: toExportRow,
+  };
+};
+
 module.exports = {
   getDashboard,
   getUsersProgress,
@@ -664,10 +715,12 @@ module.exports = {
   getAssignedProjectIdsByUser,
   getProjectAssignees,
   getTaskSubmissions,
+  getSubmissionsByProject,
   getTaskSubmissionById,
   deleteTaskSubmission,
   addAdminCommentToFlag,
   exportResults,
+  prepareStreamingExport,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
   createTask, createTasksFromImport, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
 };

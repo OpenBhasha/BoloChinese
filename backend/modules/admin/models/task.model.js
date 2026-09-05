@@ -87,6 +87,8 @@ const taskSchema = new mongoose.Schema(
 
 // One dialogue per project - allows the same source dataset to be split across projects.
 taskSchema.index({ projectId: 1, dialogueId: 1 }, { unique: true });
+// Speeds up the project's task list and admin/user "tasks by project" lookups.
+taskSchema.index({ projectId: 1, createdAt: 1 });
 
 // Auto-generate taskId before save
 taskSchema.pre("save", async function (next) {
