@@ -9,16 +9,14 @@ import {
   verifyUser,
   updateUser,
   deleteUser,
-  restoreUser,
   bulkDeleteUsers,
-  bulkRestoreUsers,
   getAllProjects,
   getAssignedProjectIdsByUser,
   assignProjectToUser,
   unassignProjectFromUser,
   getUsersProgress,
 } from "../../api/admin.api";
-import { CheckCircle, Clock, ShieldCheck, FolderUp, Pencil, ChevronRight, Trash2, RotateCcw } from "lucide-react";
+import { CheckCircle, Clock, ShieldCheck, FolderUp, Pencil, ChevronRight, Trash2 } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
 import { paginateRows } from "../../utils/pagination";
@@ -104,32 +102,21 @@ export default function AdminUsers() {
       setRowBusy(null);
     }
   };
-  const handleRowRestore = async (u) => {
-    setRowBusy(u._id);
-    try {
-      await restoreUser(u._id);
-      toast.success("User restored.");
-      fetchUsers();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to restore user.");
-    } finally {
-      setRowBusy(null);
-    }
-  };
+  // Restore is intentionally NOT implemented - soft delete is permanent per
+  // product spec; the deleted user's identifiers become available for a
+  // fresh sign-up instead.
   const handleBulk = async () => {
     const ids = Array.from(selectedUserIds);
     if (!ids.length) return;
-    const isDelete = userScope === "active";
-    const label = isDelete ? "deactivate" : "restore";
-    if (!window.confirm(`${label[0].toUpperCase() + label.slice(1)} ${ids.length} user(s)?`)) return;
+    if (userScope !== "active") return; // Deleted tab is view-only.
+    if (!window.confirm(`Deactivate ${ids.length} user(s)? This can't be undone.`)) return;
     setBulkBusy(true);
     try {
-      const req = isDelete ? bulkDeleteUsers(ids) : bulkRestoreUsers(ids);
-      const res = await req;
-      toast.success(`${res.data.data.modifiedCount} user(s) ${isDelete ? "deactivated" : "restored"}.`);
+      const res = await bulkDeleteUsers(ids);
+      toast.success(`${res.data.data.modifiedCount} user(s) deactivated.`);
       fetchUsers();
     } catch (err) {
-      toast.error(err.response?.data?.message || `Bulk ${label} failed.`);
+      toast.error(err.response?.data?.message || "Bulk deactivate failed.");
     } finally {
       setBulkBusy(false);
     }
@@ -379,20 +366,9 @@ export default function AdminUsers() {
   };
 
   const renderActionButton = (u) => {
-    // Deleted view is read-only apart from Restore.
-    if (userScope === "deleted") {
-      return (
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            onClick={() => handleRowRestore(u)}
-            disabled={rowBusy === u._id}
-            className="btn-primary flex items-center gap-1.5 py-1.5 px-3 text-xs"
-          >
-            <RotateCcw size={13} /> {rowBusy === u._id ? "Restoring…" : "Restore"}
-          </button>
-        </div>
-      );
-    }
+    // Deleted view is fully read-only. Once deactivated the account can't
+    // come back; the annotator's email is free for a fresh sign-up.
+    if (userScope === "deleted") return null;
 
     const canVerify = u.role === "user" && !u.isVerified;
     const canAssign = u.role === "user" && u.isVerified;
@@ -465,18 +441,14 @@ export default function AdminUsers() {
           ))}
         </div>
 
-        {selectedUserIds.size > 0 && (
+        {selectedUserIds.size > 0 && userScope === "active" && (
           <button
             type="button"
             onClick={handleBulk}
             disabled={bulkBusy}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white disabled:opacity-60 ${
-              userScope === "active" ? "bg-red-600 hover:bg-red-700" : "bg-primary-700 hover:bg-primary-800"
-            }`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
           >
-            {userScope === "active"
-              ? <><Trash2 size={12} /> Deactivate {selectedUserIds.size}</>
-              : <><RotateCcw size={12} /> Restore {selectedUserIds.size}</>}
+            <Trash2 size={12} /> Deactivate {selectedUserIds.size}
           </button>
         )}
       </div>

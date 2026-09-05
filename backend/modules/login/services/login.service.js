@@ -20,14 +20,11 @@ const loginUser = async ({ email, password }) => {
     throw err;
   }
 
-  if (user.deletedAt) {
-    // Soft-deleted accounts get the same generic error as a bad password so
-    // we don't leak which addresses were once real.
-    logger.warn(`Blocked login for deactivated account: ${email}`);
-    const err = new Error("Invalid email or password.");
-    err.statusCode = 401;
-    throw err;
-  }
+  // Soft-deleted accounts don't need a check here - findUserByEmailForLogin
+  // already filters them out (deletedAt is null-only), so the branch above
+  // returns "Invalid email or password" without leaking that the address was
+  // once real. A new sign-up may reuse a deleted address; the partial unique
+  // index guarantees at most one active user per email.
 
   if (!user.isVerified) {
     const err = new Error("Your account is pending admin verification.");

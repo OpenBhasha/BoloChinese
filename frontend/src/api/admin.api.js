@@ -16,9 +16,7 @@ export const getPendingUsers = () => api.get("/admin/users/pending");
 export const verifyUser = (id) => api.patch(`/admin/users/${id}/verify`);
 export const updateUser = (id, data) => api.patch(`/admin/users/${id}`, data);
 export const deleteUser = (id) => api.delete(`/admin/users/${id}`);
-export const restoreUser = (id) => api.post(`/admin/users/${id}/restore`);
 export const bulkDeleteUsers = (ids) => api.post(`/admin/users/bulk-delete`, { ids });
-export const bulkRestoreUsers = (ids) => api.post(`/admin/users/bulk-restore`, { ids });
 export const getAssignedProjectIdsByUser = (userId) => api.get(`/admin/users/${userId}/assigned-projects`);
 export const getUserSubmissions = (userId) => api.get(`/admin/users/${userId}/submissions`);
 export const assignProjectToUser = (projectId, userId) =>

@@ -13,30 +13,25 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: [true, "Email is required"],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, "Please enter a valid email address"],
     },
     // Stored normalized to E.164 by the register validator. Required for
     // public registration (enforced there, not here, since internal flows
-    // like admin seeding create users without a phone). Unique + sparse so
-    // the same number can't back two accounts, while users with no phone
-    // (e.g. seeded admins) don't collide with each other.
+    // like admin seeding create users without a phone). Uniqueness is
+    // enforced only among active users - see the partial index below.
     phone: {
       type: String,
       trim: true,
       maxlength: [30, "Phone number must be at most 30 characters"],
-      unique: true,
-      sparse: true,
     },
-    // Auto-generated from the user's name at registration; unique across users.
+    // Auto-generated from the user's name at registration. Uniqueness is
+    // enforced only among active users - see the partial index below.
     username: {
       type: String,
       trim: true,
       lowercase: true,
-      unique: true,
-      sparse: true,
     },
     // Set when the name/identity supplied at registration looks anonymous or
     // invalid, so an admin can scrutinise it before approving the account.
@@ -89,6 +84,35 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1, isVerified: 1 });
 // Filters that split active vs deleted users.
 userSchema.index({ deletedAt: 1 });
+
+// Uniqueness for email / phone / username applies only among ACTIVE users,
+// so a soft-deleted account frees its identifiers up for a fresh sign-up.
+// startup/app.js calls User.syncIndexes() on boot to drop any old plain-
+// unique indexes and swap them for these partial ones.
+userSchema.index(
+  { email: 1 },
+  { unique: true, partialFilterExpression: { deletedAt: null } }
+);
+userSchema.index(
+  { phone: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      deletedAt: null,
+      phone: { $exists: true, $type: "string" },
+    },
+  }
+);
+userSchema.index(
+  { username: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      deletedAt: null,
+      username: { $exists: true, $type: "string" },
+    },
+  }
+);
 
 // Hash password before save
 userSchema.pre("save", async function (next) {

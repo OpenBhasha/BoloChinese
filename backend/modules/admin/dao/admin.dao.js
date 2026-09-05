@@ -43,24 +43,16 @@ const softDeleteUser = async (userId) => {
   ).select("-password");
 };
 
-const restoreUser = async (userId) => {
-  return User.findByIdAndUpdate(userId, { deletedAt: null }, { new: true }).select("-password");
-};
+// Soft delete is permanent - there is no restoreUser. Once deletedAt is
+// set the account stays inactive forever, and the email/phone/username
+// become available to a fresh sign-up thanks to the partial unique indexes
+// on the User schema.
 
 const softDeleteUsersBulk = async (ids = []) => {
   if (!ids.length) return { modifiedCount: 0 };
   const res = await User.updateMany(
     { _id: { $in: ids }, deletedAt: null },
     { $set: { deletedAt: new Date() } }
-  );
-  return { modifiedCount: res.modifiedCount || 0, requestedCount: ids.length };
-};
-
-const restoreUsersBulk = async (ids = []) => {
-  if (!ids.length) return { modifiedCount: 0 };
-  const res = await User.updateMany(
-    { _id: { $in: ids }, deletedAt: { $ne: null } },
-    { $set: { deletedAt: null } }
   );
   return { modifiedCount: res.modifiedCount || 0, requestedCount: ids.length };
 };
@@ -257,8 +249,10 @@ const getProjectAssignees = async (projectId) => {
   const assignments = await ProjectAssignment.find({ projectId }).lean();
   if (!assignments.length) return [];
 
+  // Assignees list only shows ACTIVE users; deleted accounts vanish from
+  // the project's Users tab like they do from every other analytics view.
   const userIds = assignments.map((a) => a.userId);
-  const users = await User.find({ _id: { $in: userIds } })
+  const users = await User.find({ _id: { $in: userIds }, deletedAt: null })
     .select("name email username role isVerified createdAt")
     .lean();
   const userById = new Map(users.map((u) => [String(u._id), u]));
@@ -284,17 +278,19 @@ const getProjectAssignees = async (projectId) => {
     statsByUser.set(key, s);
   });
 
-  return assignments.map((a) => {
-    const user = userById.get(String(a.userId));
-    const stats = statsByUser.get(String(a.userId)) || { completed: 0, inProgress: 0, discarded: 0, skipped: 0, submitted: 0 };
-    const pending = Math.max(0, totalTasks - stats.submitted);
-    return {
-      user: user || { _id: a.userId, name: "Unknown user" },
-      assignedAt: a.createdAt || a.updatedAt || null,
-      assignedBy: a.assignedBy || null,
-      stats: { ...stats, pending, totalTasks },
-    };
-  });
+  return assignments
+    .filter((a) => userById.has(String(a.userId))) // drop assignments whose user is deleted
+    .map((a) => {
+      const user = userById.get(String(a.userId));
+      const stats = statsByUser.get(String(a.userId)) || { completed: 0, inProgress: 0, discarded: 0, skipped: 0, submitted: 0 };
+      const pending = Math.max(0, totalTasks - stats.submitted);
+      return {
+        user,
+        assignedAt: a.createdAt || a.updatedAt || null,
+        assignedBy: a.assignedBy || null,
+        stats: { ...stats, pending, totalTasks },
+      };
+    });
 };
 
 const getAssignedProjectIdsByUser = async (userId) => {
@@ -304,14 +300,17 @@ const getAssignedProjectIdsByUser = async (userId) => {
 
 // Per-user rollup for the admin dashboard's user progress table.
 const getPerUserProgress = async () => {
-  const users = await User.find({ role: "user" })
+  // Only ACTIVE (non-soft-deleted) annotators appear in progress analytics.
+  const users = await User.find({ role: "user", deletedAt: null })
     .select("name email username phone isVerified identityFlagged identityFlagReason createdAt")
     .lean();
   if (!users.length) return [];
 
+  const activeUserIds = users.map((u) => u._id);
   const [assignments, rollup] = await Promise.all([
-    ProjectAssignment.find({}).select("userId projectId").lean(),
+    ProjectAssignment.find({ userId: { $in: activeUserIds } }).select("userId projectId").lean(),
     TaskSubmission.aggregate([
+      { $match: { userId: { $in: activeUserIds } } },
       {
         $group: {
           _id: "$userId",
@@ -458,27 +457,36 @@ const addAdminCommentToFlag = async (submissionId, comment, adminId) => {
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 const getDashboardStats = async () => {
-  const [totalUsers, pendingUsers, flaggedIdentities, totalProjects, totalTasks, submissionsByStatus, metrics] =
-    await Promise.all([
-      User.countDocuments(),
-      User.countDocuments({ isVerified: false }),
-      User.countDocuments({ identityFlagged: true }),
-      Project.countDocuments(),
-      Task.countDocuments(),
-      TaskSubmission.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
-      TaskSubmission.aggregate([
-        {
-          $group: {
-            _id: null,
-            validated: { $sum: { $cond: [{ $eq: ["$pinyinVerified", true] }, 1, 0] } },
-            edited: { $sum: { $cond: [{ $eq: ["$isCorrected", true] }, 1, 0] } },
-            discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
-            recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
-            audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
-          },
+  // Everything below counts ACTIVE users only. Soft-deleted accounts and
+  // their submissions are excluded from every tile.
+  const activeUsers = await User.find({ deletedAt: null }).select("_id isVerified identityFlagged").lean();
+  const activeUserIds = activeUsers.map((u) => u._id);
+
+  const [totalProjects, totalTasks, submissionsByStatus, metrics] = await Promise.all([
+    Project.countDocuments(),
+    Task.countDocuments(),
+    TaskSubmission.aggregate([
+      { $match: { userId: { $in: activeUserIds } } },
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+    ]),
+    TaskSubmission.aggregate([
+      { $match: { userId: { $in: activeUserIds } } },
+      {
+        $group: {
+          _id: null,
+          validated: { $sum: { $cond: [{ $eq: ["$pinyinVerified", true] }, 1, 0] } },
+          edited: { $sum: { $cond: [{ $eq: ["$isCorrected", true] }, 1, 0] } },
+          discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
+          recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
+          audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
         },
-      ]),
-    ]);
+      },
+    ]),
+  ]);
+
+  const totalUsers = activeUsers.length;
+  const pendingUsers = activeUsers.filter((u) => !u.isVerified).length;
+  const flaggedIdentities = activeUsers.filter((u) => u.identityFlagged).length;
 
   const statusMap = {};
   submissionsByStatus.forEach((s) => { statusMap[s._id] = s.count; });
@@ -517,7 +525,7 @@ const getDashboardStats = async () => {
 
 module.exports = {
   getAllUsers, getPendingUsers, verifyUser, updateUser,
-  softDeleteUser, restoreUser, softDeleteUsersBulk, restoreUsersBulk,
+  softDeleteUser, softDeleteUsersBulk,
   getUserById, getUserByEmail,
   createProject, getAllProjects, getProjectById, getProjectByName, updateProject, deleteProject,
   createTask, addTaskToProject, addTasksToProject, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk, removeTaskFromProject,

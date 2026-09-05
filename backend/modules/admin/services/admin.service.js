@@ -63,19 +63,6 @@ const deleteUser = async (userId, adminId) => {
   return updated;
 };
 
-const restoreUser = async (userId) => {
-  const user = await dao.getUserById(userId);
-  if (!user) {
-    const err = new Error("User not found.");
-    err.statusCode = 404;
-    throw err;
-  }
-  if (!user.deletedAt) return user; // already active
-  const updated = await dao.restoreUser(userId);
-  logger.info(`Admin restored user ${user.email}`);
-  return updated;
-};
-
 const bulkDeleteUsers = async (ids = [], adminId) => {
   if (!Array.isArray(ids) || !ids.length) {
     const err = new Error("Provide at least one user id.");
@@ -89,16 +76,6 @@ const bulkDeleteUsers = async (ids = [], adminId) => {
   return { ...result, requestedCount: ids.length };
 };
 
-const bulkRestoreUsers = async (ids = []) => {
-  if (!Array.isArray(ids) || !ids.length) {
-    const err = new Error("Provide at least one user id.");
-    err.statusCode = 400;
-    throw err;
-  }
-  const result = await dao.restoreUsersBulk(ids);
-  logger.info(`Admin bulk-restored ${result.modifiedCount}/${ids.length} user(s)`);
-  return { ...result, requestedCount: ids.length };
-};
 
 const getUserSubmissions = async (userId) => {
   const user = await dao.getUserById(userId);
@@ -773,7 +750,7 @@ module.exports = {
   getDashboard,
   getUsersProgress,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
-  deleteUser, restoreUser, bulkDeleteUsers, bulkRestoreUsers,
+  deleteUser, bulkDeleteUsers,
   getUserSubmissions,
   assignProjectToUser,
   unassignProjectFromUser,
