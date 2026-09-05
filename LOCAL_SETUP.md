@@ -190,6 +190,7 @@ kill <pid>
 | `npm start` | Production start (`node index.js`). |
 | `npm run dev` | Dev start with nodemon file-watching. |
 | `npm run seed` | Manual first-admin seed from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. |
+| `npm run reset` | **Nuke everything.** Drops every collection in the configured `MONGODB_URI` database **and** deletes every Cloudinary resource under the `bolo/audio/` prefix. Interactive by default (asks you to type `YES`); set `RESET_YES=1` to skip the prompt. Refuses to run against a URI containing `prod` unless you type the database name back. After it finishes, boot the backend and `SEED_ADMIN` recreates the admin from your env. |
 
 ## Frontend scripts
 
