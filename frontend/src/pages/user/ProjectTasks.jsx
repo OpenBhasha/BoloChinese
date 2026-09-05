@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Grid3x3, List, Mic2 } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Grid3x3, List, Mic2 } from "lucide-react";
 import toast from "react-hot-toast";
 import DataTable from "datatables.net-dt";
 import "datatables.net-dt/css/dataTables.dataTables.css";
@@ -116,10 +116,6 @@ export default function ProjectTasks() {
 
   return (
     <UserLayout>
-      <Link to="/user" className="flex items-center gap-1.5 text-sm text-black/70 hover:text-black mb-6 transition">
-        <ChevronLeft size={16} /> Back to Projects
-      </Link>
-
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6 sm:mb-8">
         <h1 className="text-xl sm:text-2xl font-bold text-primary-900">{project?.name || "Project"}</h1>
         <div className="inline-flex rounded-lg border border-primary-100 bg-white p-1">

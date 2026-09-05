@@ -78,4 +78,11 @@ router.post(
   ctrl.reconsiderTask
 );
 
+// POST /api/user/tasks/:id/time  { ms }  - increments timeSpentMs
+router.post(
+  "/tasks/:id/time",
+  [validateObjectId("id"), validate],
+  ctrl.recordTimeSpent
+);
+
 module.exports = router;

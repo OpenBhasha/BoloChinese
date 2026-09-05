@@ -1,19 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import UserLayout from "../../components/layout/UserLayout";
-import { getTaskDetail, getProjectTasks } from "../../api/user.api";
+import { getTaskDetail, getProjectTasks, recordTaskTime } from "../../api/user.api";
 import AudioRecorder from "../../components/task/AudioRecorder";
 import TranscriptVerification from "../../components/task/TranscriptVerification";
 import StatusBadge from "../../utils/statusBadge";
-import { ChevronLeft, CheckCircle2, SkipBack, SkipForward } from "lucide-react";
+import { CheckCircle2, SkipBack, SkipForward, Lock } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
 
-// Fixed bottom bar with Prev / Next - always visible so annotators can move
-// between tasks during verification, editing, or recording. When a fresh
-// recording is waiting to be sent, Next is hidden so Submit & Next inside
-// the recorder is the only way forward (no redundant navigation).
-function TaskNavBar({ prevTask, nextTask, onNavigate, hideNext }) {
+// Fixed bottom bar - Prev is always available, Next is only enabled after the
+// current task is finished (audio uploaded or discarded). This locks the flow
+// to sequential completion: annotators can revisit earlier work, but can't
+// jump past an in-progress task.
+function TaskNavBar({ prevTask, nextTask, onNavigate, disableNext }) {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-primary-700 border-t border-primary-800 z-30">
       <div className="max-w-5xl mx-auto h-16 px-6 flex items-center justify-between">
@@ -25,20 +25,41 @@ function TaskNavBar({ prevTask, nextTask, onNavigate, hideNext }) {
         >
           <SkipBack size={22} /> Previous
         </button>
-        {!hideNext && (
-          <button
-            type="button"
-            onClick={() => (nextTask ? onNavigate(nextTask._id) : toast("You are on the last task"))}
-            disabled={!nextTask}
-            className="inline-flex items-center gap-2 recorder-btn-label text-sm font-semibold disabled:opacity-40"
-          >
-            Next <SkipForward size={22} />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            if (disableNext) {
+              toast("Finish this task before moving on.");
+              return;
+            }
+            if (!nextTask) {
+              toast("You are on the last task");
+              return;
+            }
+            onNavigate(nextTask._id);
+          }}
+          disabled={!nextTask || disableNext}
+          title={disableNext ? "Finish this task first" : undefined}
+          className="inline-flex items-center gap-2 recorder-btn-label text-sm font-semibold disabled:opacity-40"
+        >
+          {disableNext && <Lock size={14} />} Next <SkipForward size={22} />
+        </button>
       </div>
     </div>
   );
 }
+
+// A "finished" task lets the annotator move on: audio uploaded (completed) or
+// discarded. Verified/corrected but no audio yet = not finished.
+const isTaskFinished = (task) =>
+  Boolean(
+    task &&
+      (task.status === "completed" ||
+        task.status === "discarded" ||
+        task.discarded?.flagged ||
+        task.audio?.publicId ||
+        task.audio?.url)
+  );
 
 export default function TaskDetail() {
   const { id } = useParams();
@@ -50,6 +71,7 @@ export default function TaskDetail() {
   const [projectTasks, setProjectTasks] = useState([]);
   // eslint-disable-next-line no-unused-vars
   const [recorderSubmitting, setRecorderSubmitting] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [pendingRecording, setPendingRecording] = useState(false);
 
   const refreshProjectTasks = async (projectId) => {
@@ -87,6 +109,55 @@ export default function TaskDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // ─── Time tracking ──────────────────────────────────────────────────────────
+  // Accumulate wall-clock milliseconds the annotator spends on this task.
+  // Pause when the tab is hidden, flush on unmount / navigation / page hide.
+  const taskStartRef = useRef(null);
+  const accumulatedRef = useRef(0);
+  const currentTaskIdRef = useRef(id);
+
+  useEffect(() => {
+    currentTaskIdRef.current = id;
+    accumulatedRef.current = 0;
+    taskStartRef.current = document.visibilityState === "visible" ? Date.now() : null;
+
+    const pause = () => {
+      if (taskStartRef.current) {
+        accumulatedRef.current += Date.now() - taskStartRef.current;
+        taskStartRef.current = null;
+      }
+    };
+    const resume = () => {
+      if (!taskStartRef.current) taskStartRef.current = Date.now();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") pause();
+      else resume();
+    };
+    const flush = () => {
+      pause();
+      const ms = accumulatedRef.current;
+      accumulatedRef.current = 0;
+      if (ms > 500 && currentTaskIdRef.current) {
+        // Best effort - on SPA navigation the axios request goes through
+        // normally; on hard-unload it may be cancelled, and we lose the
+        // last partial delta. Not worth a keepalive dance for a heuristic.
+        recordTaskTime(currentTaskIdRef.current, ms).catch(() => {});
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+      flush();
+    };
+  }, [id]);
+
   // The recording screen is only available after the user confirms the text
   // (Yes) or submits a correction (Submit). Discarded items stay locked.
   const canRecord = Boolean(
@@ -108,33 +179,28 @@ export default function TaskDetail() {
   if (!task) return <UserLayout><p className="text-slate-400">Task not found.</p></UserLayout>;
 
   // Bottom padding keeps the last card clear of the fixed nav bar (64px) and,
-  // when the recorder is mounted, the compact recorder panel above it (~72px).
-  const scrollBottomPad = canRecord ? "pb-40" : "pb-20";
+  // when the recorder is mounted, the compact recorder panel above it.
+  const scrollBottomPad = canRecord ? "pb-56" : "pb-20";
+  const displayNumber = currentTaskIndex >= 0 ? currentTaskIndex + 1 : null;
+  const nextDisabled = !isTaskFinished(task);
 
   return (
     <UserLayout>
       <div className={scrollBottomPad}>
-      <Link
-        to={task?.projectId ? `/user/projects/${task.projectId}` : "/user"}
-        className="flex items-center gap-1.5 text-sm text-black/70 hover:text-black mb-6 transition"
-      >
-        <ChevronLeft size={16} /> Back to Tasks
-      </Link>
-
       {switchingTask && (
         <div className="mb-4 text-xs text-primary-500">Loading next task...</div>
       )}
 
-      {/* Header */}
+      {/* Header - task index instead of raw taskId */}
       <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-sm text-primary-400 bg-primary-500/10 px-2.5 py-0.5 rounded">
-              {task.taskId}
+            <span className="font-semibold text-sm text-primary-800 bg-primary-100 px-2.5 py-0.5 rounded">
+              {displayNumber !== null ? `Task ${displayNumber} of ${projectTasks.length}` : "Task"}
             </span>
             <StatusBadge status={task.status} />
           </div>
-          <h1 className="text-xl font-bold text-white">{task.dialogueId}</h1>
+          <h1 className="text-xl font-bold text-primary-900">{task.dialogueId}</h1>
         </div>
       </div>
 
@@ -197,7 +263,7 @@ export default function TaskDetail() {
         prevTask={prevTask}
         nextTask={nextTask}
         onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
-        hideNext={pendingRecording}
+        disableNext={nextDisabled}
       />
     </UserLayout>
   );

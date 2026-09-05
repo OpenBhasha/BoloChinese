@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { AlertTriangle, CheckCircle2, RotateCcw, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import Modal from "../ui/Modal";
 import {
   verifyPinyin,
   correctTranscript,
@@ -75,6 +76,7 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [reconsidering, setReconsidering] = useState(false);
+  const [showNoModal, setShowNoModal] = useState(false);
 
   const displayChinese = task.correctedChineseTranscript || task.chineseTranscript;
   const displayPinyin = task.correctedPinyin || task.pinyin;
@@ -90,21 +92,55 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
   );
   const heavyEdit = chineseEdit.ratio > HEAVY_EDIT_RATIO;
 
-  const handleVerify = async (correct) => {
+  const handleVerifyYes = async () => {
     setVerifying(true);
     try {
-      await verifyPinyin(task._id, correct);
-      if (correct) {
-        onTaskUpdate({ pinyinVerified: true, status: "verified" });
-        setStep("ready-to-record");
-      } else {
-        onTaskUpdate({ pinyinVerified: false, status: "in-progress" });
-        setStep("editing");
-      }
+      await verifyPinyin(task._id, true);
+      onTaskUpdate({ pinyinVerified: true, status: "verified" });
+      setStep("ready-to-record");
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to record verification.");
     } finally {
       setVerifying(false);
+    }
+  };
+
+  // "No" opens a modal - the annotator picks Edit (open the editor) or
+  // Discard (drop and move on). We don't record verifyPinyin(false) yet:
+  // the state change happens along with whichever action they pick.
+  const openNoModal = () => setShowNoModal(true);
+
+  const chooseEdit = async () => {
+    setShowNoModal(false);
+    setVerifying(true);
+    try {
+      await verifyPinyin(task._id, false);
+      onTaskUpdate({ pinyinVerified: false, status: "in-progress" });
+      setStep("editing");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to open editor.");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const chooseDiscardFromNoModal = async () => {
+    setShowNoModal(false);
+    setDiscarding(true);
+    try {
+      await discardTask(task._id);
+      onTaskUpdate({ discarded: { flagged: true, discardedAt: new Date().toISOString() }, status: "discarded" });
+      toast.success("Task discarded.");
+      if (nextTask && onNavigate) {
+        onNavigate(nextTask._id);
+      } else {
+        setStep("discarded");
+        if (!nextTask) toast("You are on the last task.");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to discard task.");
+    } finally {
+      setDiscarding(false);
     }
   };
 
@@ -297,35 +333,87 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
 
   // step === "gate"
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="label text-primary-400 mb-1">Step 1 - Verify Text</p>
-        <p className="text-sm text-black/70">
-          Does the Chinese text and its Pinyin accurately represent the source? Choose <b>Yes</b> to start recording,
-          or <b>No</b> to make minor corrections.
-        </p>
+    <>
+      <div className="space-y-4">
+        <div>
+          <p className="label text-primary-400 mb-1">Step 1 - Verify Text</p>
+          <p className="text-sm text-black/70">
+            Does the Chinese text and its Pinyin accurately represent the source? Choose <b>Yes</b> to start recording,
+            or <b>No</b> to edit the text or discard the task.
+          </p>
+        </div>
+
+        <ScriptPanels chinese={task.chineseTranscript} pinyin={task.pinyin} editable={false} />
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleVerifyYes}
+            disabled={verifying || discarding}
+            className="bg-green-600 hover:bg-green-700 !text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Yes
+          </button>
+          <button
+            type="button"
+            onClick={openNoModal}
+            disabled={verifying || discarding}
+            className="bg-red-600 hover:bg-red-700 !text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            No
+          </button>
+        </div>
       </div>
 
-      <ScriptPanels chinese={task.chineseTranscript} pinyin={task.pinyin} editable={false} />
-
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => handleVerify(true)}
-          disabled={verifying}
-          className="bg-green-600 hover:bg-green-700 !text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Yes
-        </button>
-        <button
-          type="button"
-          onClick={() => handleVerify(false)}
-          disabled={verifying}
-          className="bg-red-600 hover:bg-red-700 !text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          No
-        </button>
-      </div>
-    </div>
+      {showNoModal && (
+        <Modal title="What next?" size="md" onClose={() => !verifying && !discarding && setShowNoModal(false)}>
+          <div className="space-y-4">
+            <p className="text-sm text-black/80">
+              You marked the text as inaccurate. Do you want to fix it or drop this task?
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={chooseEdit}
+                disabled={verifying || discarding}
+                className="rounded-lg border border-primary-200 hover:border-primary-500 bg-white p-4 text-left transition disabled:opacity-50"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Pencil size={16} className="text-primary-700" />
+                  <span className="text-sm font-semibold text-primary-900">Edit</span>
+                </div>
+                <p className="text-xs text-black/60">
+                  Open the editor to fix the Chinese and Pinyin, then submit.
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={chooseDiscardFromNoModal}
+                disabled={verifying || discarding}
+                className="rounded-lg border border-red-200 hover:border-red-500 bg-white p-4 text-left transition disabled:opacity-50"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Trash2 size={16} className="text-red-600" />
+                  <span className="text-sm font-semibold text-primary-900">Discard</span>
+                </div>
+                <p className="text-xs text-black/60">
+                  Drop this task and move on to the next one.
+                </p>
+              </button>
+            </div>
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowNoModal(false)}
+                disabled={verifying || discarding}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }

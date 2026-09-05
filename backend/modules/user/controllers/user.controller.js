@@ -180,6 +180,17 @@ const discardTask = async (req, res, next) => {
   }
 };
 
+const recordTimeSpent = async (req, res, next) => {
+  try {
+    const ms = Number(req.body?.ms) || 0;
+    await userSvc.recordTimeSpent(req.params.id, req.user.id, ms);
+    return successResponse(res, "Time recorded.", { ok: true });
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 const reconsiderTask = async (req, res, next) => {
   try {
     const task = await userSvc.reconsiderTask(req.params.id, req.user.id);
@@ -227,6 +238,7 @@ module.exports = {
   markErroneous,
   discardTask,
   reconsiderTask,
+  recordTimeSpent,
   getMyProfile,
   updateMyProfile,
 };

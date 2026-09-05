@@ -28,3 +28,4 @@ export const correctTranscript = (id, correctedChineseTranscript, correctedPinyi
 export const markErroneous = (id, reason) => api.patch(`/user/tasks/${id}/mark-erroneous`, { reason });
 export const discardTask = (id) => api.post(`/user/tasks/${id}/discard`);
 export const reconsiderTask = (id) => api.post(`/user/tasks/${id}/reconsider`);
+export const recordTaskTime = (id, ms) => api.post(`/user/tasks/${id}/time`, { ms });

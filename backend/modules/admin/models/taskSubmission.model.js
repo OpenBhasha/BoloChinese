@@ -90,6 +90,14 @@ const taskSubmissionSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Total wall-clock time the annotator has spent on this task across all
+    // sessions, accumulated in milliseconds. The client sends short deltas
+    // (tab hidden / component unmount / navigation) and the server sums them
+    // in via $inc so out-of-order arrivals still add up correctly.
+    timeSpentMs: {
+      type: Number,
+      default: 0,
+    },
     reportedIssue: {
       flagged: { type: Boolean, default: false },
       note: { type: String, default: "" },

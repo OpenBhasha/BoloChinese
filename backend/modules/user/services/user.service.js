@@ -178,6 +178,12 @@ const reconsiderTask = async (taskId, userId) => {
   return getTaskDetail(taskId, userId);
 };
 
+const recordTimeSpent = async (taskId, userId, deltaMs) => {
+  const existing = await getTaskDetail(taskId, userId);
+  await dao.incrementTimeSpent(taskId, existing.projectId, userId, deltaMs);
+  return { ok: true };
+};
+
 // Fields the user (or an admin acting on the user) may edit on the profile.
 // Everything else - username, role, verification flags, dedicatedProjectId -
 // stays locked.
@@ -234,6 +240,7 @@ module.exports = {
   markErroneous,
   discardTask,
   reconsiderTask,
+  recordTimeSpent,
   getUserProfile,
   updateUserProfile,
 };

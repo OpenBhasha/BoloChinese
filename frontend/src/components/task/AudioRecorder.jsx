@@ -321,8 +321,10 @@ export default function AudioRecorder({
 
       {renderActions()}
 
-      {/* Playback strip for audio already stored on the server - compact inline. */}
-      {hasStoredAudio && (
+      {/* Playback strip: shown for both a fresh recording (audioBlob) and for
+          audio already stored on the server, so the annotator can review
+          before Submit & Next. */}
+      {(hasStoredAudio || audioBlob) && (
         <>
           <audio
             ref={audioRef}

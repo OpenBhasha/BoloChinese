@@ -292,6 +292,22 @@ const markSubmissionErroneous = async (taskId, projectId, userId, reason) => {
   );
 };
 
+// Increment the annotator's wall-clock time on this task. Upserts a
+// submission stub if one doesn't exist yet (e.g. time recorded before any
+// verification action).
+const incrementTimeSpent = async (taskId, projectId, userId, deltaMs) => {
+  const ms = Math.max(0, Math.round(Number(deltaMs) || 0));
+  if (!ms) return null;
+  return TaskSubmission.findOneAndUpdate(
+    { taskId, userId },
+    {
+      $inc: { timeSpentMs: ms },
+      $setOnInsert: { taskId, projectId, userId, status: "in-progress" },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
 const reconsiderSubmission = async (taskId, userId) => {
   return TaskSubmission.findOneAndUpdate(
     { taskId, userId },
@@ -383,6 +399,7 @@ module.exports = {
   markSubmissionErroneous,
   markSubmissionDiscarded,
   reconsiderSubmission,
+  incrementTimeSpent,
   getUserById,
   updateUserSelfFields,
   getUserSubmissionAggregate,
