@@ -66,6 +66,16 @@ router.get("/projects/:projectId/tasks", [validateObjectId("projectId"), validat
 router.get("/tasks/:id", [validateObjectId("id"), validate], ctrl.getTaskById);
 router.patch("/tasks/:id", [validateObjectId("id"), ...updateTaskValidator, validate], ctrl.updateTask);
 router.delete("/tasks/:id", [validateObjectId("id"), validate], ctrl.deleteTask);
+router.post(
+  "/projects/:projectId/tasks/bulk-delete",
+  [validateObjectId("projectId"), validate],
+  ctrl.deleteTasksBulk
+);
+router.get(
+  "/projects/:projectId/assignees",
+  [validateObjectId("projectId"), validate],
+  ctrl.getProjectAssignees
+);
 
 // ─── Admin view user submissions ─────────────────────────────────────────────
 router.get("/tasks/:id/submissions", [validateObjectId("id"), validate], ctrl.getTaskSubmissions);

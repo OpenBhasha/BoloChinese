@@ -87,6 +87,16 @@ const unassignProjectFromUser = async (req, res, next) => {
   }
 };
 
+const getProjectAssignees = async (req, res, next) => {
+  try {
+    const assignees = await svc.getProjectAssignees(req.params.projectId);
+    return successResponse(res, "Project assignees retrieved.", assignees);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 const getAssignedProjectIdsByUser = async (req, res, next) => {
   try {
     const assignedProjectIds = await svc.getAssignedProjectIdsByUser(req.params.userId);
@@ -196,6 +206,16 @@ const updateTask = async (req, res, next) => {
   try {
     const task = await svc.updateTask(req.params.id, req.body);
     return successResponse(res, "Task updated.", task);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const deleteTasksBulk = async (req, res, next) => {
+  try {
+    const result = await svc.deleteTasksBulk(req.params.projectId, req.body?.ids || []);
+    return successResponse(res, `${result.deletedCount} task(s) deleted.`, result);
   } catch (err) {
     if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
     next(err);
@@ -312,9 +332,10 @@ module.exports = {
   getUserSubmissions,
   assignProjectToUser,
   unassignProjectFromUser,
+  getProjectAssignees,
   getAssignedProjectIdsByUser,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
-  createTask, uploadTasksImport, getTasksByProject, getTaskById, updateTask, deleteTask,
+  createTask, uploadTasksImport, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
   getTaskSubmissions,
   streamSubmissionAudio,
   deleteSubmission,

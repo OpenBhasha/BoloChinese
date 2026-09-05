@@ -119,12 +119,52 @@ const bulkCreateTasks = async (docs) => {
   }
 };
 
+// Order of submission statuses from "most advanced" to "least advanced".
+// Used to pick a single representative status per task when the project has
+// multiple annotators and therefore multiple submissions per task.
+const STATUS_RANK = [
+  "completed",
+  "corrected",
+  "verified",
+  "recorded",
+  "in-progress",
+  "erroneous",
+  "requires-review",
+  "discarded",
+  "skipped",
+  "pending",
+];
+const STATUS_INDEX = new Map(STATUS_RANK.map((s, i) => [s, i]));
+
 const getTasksByProject = async (projectId) => {
   const tasks = await Task.find({ projectId })
     .populate("assignedTo", "name email")
     .lean();
 
-  return sortTasksByTaskId(tasks);
+  if (!tasks.length) return [];
+
+  // Aggregate submission statuses per task in one round-trip.
+  const taskIds = tasks.map((t) => t._id);
+  const submissions = await TaskSubmission.find({ taskId: { $in: taskIds } })
+    .select("taskId status")
+    .lean();
+
+  const bestByTask = new Map();
+  submissions.forEach(({ taskId, status }) => {
+    const key = String(taskId);
+    const rank = STATUS_INDEX.get(status) ?? STATUS_RANK.length;
+    const current = bestByTask.get(key);
+    if (!current || rank < current.rank) {
+      bestByTask.set(key, { status, rank });
+    }
+  });
+
+  const enriched = tasks.map((task) => ({
+    ...task,
+    overallStatus: bestByTask.get(String(task._id))?.status || "pending",
+  }));
+
+  return sortTasksByTaskId(enriched);
 };
 
 const getTaskById = async (id) => {
@@ -138,6 +178,18 @@ const updateTask = async (id, data) => {
 
 const deleteTask = async (id) => {
   return Task.findByIdAndDelete(id);
+};
+
+// Bulk-delete tasks scoped to a single project. Also strips their ids off
+// the project's `tasks` array and drops every related submission so nothing
+// dangles.
+const deleteTasksBulk = async (projectId, ids = []) => {
+  if (!ids.length) return { deletedCount: 0 };
+  const objectIds = ids;
+  const result = await Task.deleteMany({ _id: { $in: objectIds }, projectId });
+  await Project.findByIdAndUpdate(projectId, { $pull: { tasks: { $in: objectIds } } });
+  await TaskSubmission.deleteMany({ taskId: { $in: objectIds } });
+  return { deletedCount: result.deletedCount || 0 };
 };
 
 const removeTaskFromProject = async (projectId, taskId) => {
@@ -154,6 +206,52 @@ const assignProjectToUser = async (projectId, userId, adminId) => {
 
 const unassignProjectFromUser = async (projectId, userId) => {
   return ProjectAssignment.findOneAndDelete({ projectId, userId });
+};
+
+// Users currently assigned to a project - name, email, username, verified,
+// role - plus each annotator's per-project task progress counts.
+const getProjectAssignees = async (projectId) => {
+  const assignments = await ProjectAssignment.find({ projectId }).lean();
+  if (!assignments.length) return [];
+
+  const userIds = assignments.map((a) => a.userId);
+  const users = await User.find({ _id: { $in: userIds } })
+    .select("name email username role isVerified createdAt")
+    .lean();
+  const userById = new Map(users.map((u) => [String(u._id), u]));
+
+  // Task total for this project - shared across all annotators.
+  const totalTasks = await Task.countDocuments({ projectId });
+
+  // Per-user submission stats, scoped to the project.
+  const submissions = await TaskSubmission.find({
+    projectId,
+    userId: { $in: userIds },
+  }).select("userId status").lean();
+
+  const statsByUser = new Map();
+  submissions.forEach(({ userId, status }) => {
+    const key = String(userId);
+    const s = statsByUser.get(key) || { completed: 0, inProgress: 0, discarded: 0, skipped: 0, submitted: 0 };
+    s.submitted += 1;
+    if (status === "completed") s.completed += 1;
+    else if (status === "discarded") s.discarded += 1;
+    else if (status === "skipped") s.skipped += 1;
+    else s.inProgress += 1;
+    statsByUser.set(key, s);
+  });
+
+  return assignments.map((a) => {
+    const user = userById.get(String(a.userId));
+    const stats = statsByUser.get(String(a.userId)) || { completed: 0, inProgress: 0, discarded: 0, skipped: 0, submitted: 0 };
+    const pending = Math.max(0, totalTasks - stats.submitted);
+    return {
+      user: user || { _id: a.userId, name: "Unknown user" },
+      assignedAt: a.createdAt || a.updatedAt || null,
+      assignedBy: a.assignedBy || null,
+      stats: { ...stats, pending, totalTasks },
+    };
+  });
 };
 
 const getAssignedProjectIdsByUser = async (userId) => {
@@ -354,11 +452,12 @@ module.exports = {
   getAllUsers, getPendingUsers, verifyUser, updateUser,
   getUserById, getUserByEmail,
   createProject, getAllProjects, getProjectById, getProjectByName, updateProject, deleteProject,
-  createTask, addTaskToProject, addTasksToProject, getTasksByProject, getTaskById, updateTask, deleteTask, removeTaskFromProject,
+  createTask, addTaskToProject, addTasksToProject, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk, removeTaskFromProject,
   getExistingDialogueIds, bulkCreateTasks,
   assignProjectToUser,
   unassignProjectFromUser,
   getAssignedProjectIdsByUser,
+  getProjectAssignees,
   getTaskSubmissions,
   getSubmissionsForExport,
   getTaskSubmissionById,

@@ -15,6 +15,7 @@ export const assignProjectToUser = (projectId, userId) =>
 	api.patch(`/admin/projects/${projectId}/assign/${userId}`);
 export const unassignProjectFromUser = (projectId, userId) =>
 	api.delete(`/admin/projects/${projectId}/assign/${userId}`);
+export const getProjectAssignees = (projectId) => api.get(`/admin/projects/${projectId}/assignees`);
 
 // Projects
 export const createProject = (data) => api.post("/admin/projects", data);
@@ -39,6 +40,8 @@ export const getTasksByProject = (projectId) => api.get(`/admin/projects/${proje
 export const getTaskById = (id) => api.get(`/admin/tasks/${id}`);
 export const updateTask = (id, data) => api.patch(`/admin/tasks/${id}`, data);
 export const deleteTask = (id) => api.delete(`/admin/tasks/${id}`);
+export const bulkDeleteTasks = (projectId, ids) =>
+	api.post(`/admin/projects/${projectId}/tasks/bulk-delete`, { ids });
 
 // Result export (partial results allowed - no completion gate)
 export const exportProjectResults = (projectId) =>

@@ -165,6 +165,16 @@ const assignProjectToUser = async (projectId, userId, adminId) => {
   };
 };
 
+const getProjectAssignees = async (projectId) => {
+  const project = await dao.getProjectById(projectId);
+  if (!project) {
+    const err = new Error("Project not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  return dao.getProjectAssignees(projectId);
+};
+
 const unassignProjectFromUser = async (projectId, userId, adminId) => {
   const [project, user] = await Promise.all([
     dao.getProjectById(projectId),
@@ -375,6 +385,23 @@ const deleteTask = async (id) => {
   await dao.deleteTask(id);
   logger.info(`Task deleted: ${id}`);
   return task;
+};
+
+const deleteTasksBulk = async (projectId, ids = []) => {
+  if (!Array.isArray(ids) || !ids.length) {
+    const err = new Error("Provide at least one task id to delete.");
+    err.statusCode = 400;
+    throw err;
+  }
+  const project = await dao.getProjectById(projectId);
+  if (!project) {
+    const err = new Error("Project not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  const { deletedCount } = await dao.deleteTasksBulk(projectId, ids);
+  logger.info(`Bulk delete on project ${projectId}: removed ${deletedCount}/${ids.length} tasks`);
+  return { deletedCount, requestedCount: ids.length };
 };
 
 const IMPORT_ROW_LIMIT = 25000;
@@ -613,11 +640,12 @@ module.exports = {
   assignProjectToUser,
   unassignProjectFromUser,
   getAssignedProjectIdsByUser,
+  getProjectAssignees,
   getTaskSubmissions,
   getTaskSubmissionById,
   deleteTaskSubmission,
   addAdminCommentToFlag,
   exportResults,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
-  createTask, createTasksFromImport, getTasksByProject, getTaskById, updateTask, deleteTask,
+  createTask, createTasksFromImport, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
 };

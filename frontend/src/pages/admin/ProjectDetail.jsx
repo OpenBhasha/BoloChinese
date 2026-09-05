@@ -9,6 +9,7 @@ import {
   createTask,
   updateTask,
   deleteTask,
+  bulkDeleteTasks,
   getTaskById,
   getTaskSubmissions,
   streamSubmissionAudio,
@@ -17,6 +18,7 @@ import {
   downloadTaskTemplate,
   addAdminCommentToFlag,
   exportProjectResults,
+  getProjectAssignees,
 } from "../../api/admin.api";
 import { Plus, Trash2, Pencil, ChevronLeft, Mic2, FileAudio, FileText, User2, CalendarClock, Upload, Download, MessageSquare, FileDown } from "lucide-react";
 import { PageSpinner, Spinner } from "../../components/ui/Spinner";
@@ -31,6 +33,7 @@ const ADMIN_PROJECT_VIEWS = {
   SUBMISSIONS: "submissions",
   FLAGS: "flags",
   ERRONEOUS: "erroneous",
+  USERS: "users",
 };
 
 export default function ProjectDetail() {
@@ -58,6 +61,12 @@ export default function ProjectDetail() {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [exportingResults, setExportingResults] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [projectAssignees, setProjectAssignees] = useState([]);
+  const [assigneesLoading, setAssigneesLoading] = useState(false);
   const [submissionSearch, setSubmissionSearch] = useState("");
   const [submissionPage, setSubmissionPage] = useState(1);
   const [flagPage, setFlagPage] = useState(1);
@@ -188,7 +197,7 @@ export default function ProjectDetail() {
     dataTableInstanceRef.current = new DataTable(tableElement, {
       pageLength: 10,
       lengthMenu: [10, 25, 50, 100],
-      order: [[0, "asc"]],
+      order: [[1, "asc"]],
       autoWidth: false,
       responsive: false,
       language: {
@@ -201,7 +210,8 @@ export default function ProjectDetail() {
         emptyTable: "No tasks available",
       },
       columnDefs: [
-        { targets: -1, orderable: false, searchable: false },
+        { targets: 0, orderable: false, searchable: false }, // checkbox
+        { targets: -1, orderable: false, searchable: false }, // action
       ],
       dom: '<"dt-toolbar"lf>rt<"dt-footer"ip>',
     });
@@ -401,7 +411,86 @@ export default function ProjectDetail() {
     }
   }, [searchQuery, activeView]);
 
-  const displayedTasks = useMemo(() => tasks, [tasks]);
+  const displayedTasks = useMemo(() => {
+    if (statusFilter === "all") return tasks;
+    return tasks.filter((t) => (t.overallStatus || "pending") === statusFilter);
+  }, [tasks, statusFilter]);
+
+  // Counts per status - lets the filter chips show live badges.
+  const statusCounts = useMemo(() => {
+    const counts = { all: tasks.length };
+    tasks.forEach((t) => {
+      const s = t.overallStatus || "pending";
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    return counts;
+  }, [tasks]);
+
+  // Clear any selected ids that are no longer visible after a filter change,
+  // and drop stale ids after tasks refetch.
+  useEffect(() => {
+    setSelectedTaskIds((prev) => {
+      const visibleIds = new Set(displayedTasks.map((t) => t._id));
+      const next = new Set();
+      prev.forEach((id) => { if (visibleIds.has(id)) next.add(id); });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [displayedTasks]);
+
+  const allDisplayedSelected =
+    displayedTasks.length > 0 && displayedTasks.every((t) => selectedTaskIds.has(t._id));
+
+  const toggleSelectTask = (id) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedTaskIds((prev) => {
+      if (allDisplayedSelected) {
+        const next = new Set(prev);
+        displayedTasks.forEach((t) => next.delete(t._id));
+        return next;
+      }
+      const next = new Set(prev);
+      displayedTasks.forEach((t) => next.add(t._id));
+      return next;
+    });
+  };
+
+  // Load assignees when the Users tab opens.
+  useEffect(() => {
+    if (activeView !== ADMIN_PROJECT_VIEWS.USERS) return;
+    let cancelled = false;
+    setAssigneesLoading(true);
+    getProjectAssignees(id)
+      .then((r) => { if (!cancelled) setProjectAssignees(r.data.data || []); })
+      .catch((err) => { if (!cancelled) toast.error(err.response?.data?.message || "Failed to load users"); })
+      .finally(() => { if (!cancelled) setAssigneesLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeView, id]);
+
+  const runBulkDelete = async () => {
+    const ids = Array.from(selectedTaskIds);
+    if (!ids.length) return;
+    setBulkDeleting(true);
+    try {
+      const res = await bulkDeleteTasks(id, ids);
+      toast.success(`Deleted ${res.data.data.deletedCount} task(s).`);
+      setSelectedTaskIds(new Set());
+      setConfirmBulkDelete(false);
+      // Refresh tasks
+      const pr = await getProjectById(id);
+      setTasks(pr.data.data.tasks || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Bulk delete failed.");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   const handleSave = async (e) => {
     e.preventDefault(); setSaving(true);
@@ -656,6 +745,17 @@ export default function ProjectDetail() {
                 >
                   Erroneous
                 </button>
+                <button
+                  type="button"
+                  onClick={() => handleViewChange(ADMIN_PROJECT_VIEWS.USERS)}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-md border border-transparent transition ${
+                    activeView === ADMIN_PROJECT_VIEWS.USERS
+                      ? "bg-[#dbe7d8] text-black border-[#b9c8b3]"
+                      : "bg-transparent text-black hover:bg-[#eef4ec]"
+                  }`}
+                >
+                  Users
+                </button>
               </div>
 
               <input
@@ -717,10 +817,54 @@ export default function ProjectDetail() {
             <div className="sm:hidden divide-y divide-[#d2dad0]">
               {activeView === ADMIN_PROJECT_VIEWS.TASKS ? (
                 <>
+                  {/* Mobile filter chips + bulk delete */}
+                  <div className="p-3 flex flex-wrap gap-1.5 bg-primary-50/40 border-b border-[#d2dad0]">
+                    {[
+                      { key: "all", label: "All" },
+                      { key: "pending", label: "Pending" },
+                      { key: "in-progress", label: "In progress" },
+                      { key: "verified", label: "Verified" },
+                      { key: "corrected", label: "Corrected" },
+                      { key: "completed", label: "Completed" },
+                      { key: "discarded", label: "Discarded" },
+                      { key: "skipped", label: "Skipped" },
+                    ].map((f) => (
+                      <button
+                        key={f.key}
+                        type="button"
+                        onClick={() => setStatusFilter(f.key)}
+                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                          statusFilter === f.key
+                            ? "bg-primary-700 text-white"
+                            : "bg-white border border-primary-100 text-primary-800"
+                        }`}
+                      >
+                        {f.label} {statusCounts[f.key] || 0}
+                      </button>
+                    ))}
+                    {selectedTaskIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkDelete(true)}
+                        className="ml-auto px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-red-600 text-white inline-flex items-center gap-1"
+                      >
+                        <Trash2 size={12} /> {selectedTaskIds.size}
+                      </button>
+                    )}
+                  </div>
                   {displayedTasks.map((t) => (
-                    <div key={t._id} className="p-4 space-y-2 hover:bg-primary-50/70 transition">
+                    <div key={t._id} className={`p-4 space-y-2 hover:bg-primary-50/70 transition ${selectedTaskIds.has(t._id) ? "bg-primary-50" : ""}`}>
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xs text-primary-700 bg-primary-100 px-2 py-0.5 rounded truncate">{t.taskId}</span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select task ${t.taskId}`}
+                            checked={selectedTaskIds.has(t._id)}
+                            onChange={() => toggleSelectTask(t._id)}
+                          />
+                          <span className="font-mono text-xs text-primary-700 bg-primary-100 px-2 py-0.5 rounded truncate">{t.taskId}</span>
+                          <span className="text-[10px] capitalize text-black/60">{t.overallStatus || "pending"}</span>
+                        </div>
                         <button
                           type="button"
                           onClick={() => openSubmission(t._id)}
@@ -752,7 +896,7 @@ export default function ProjectDetail() {
                   {!displayedTasks.length && (
                     <div className="px-4 py-12 text-center text-black/60">
                       <Mic2 size={32} className="mx-auto mb-2 opacity-30" />
-                      No tasks yet. Add your first task.
+                      No tasks match this filter.
                     </div>
                   )}
                 </>
@@ -924,63 +1068,167 @@ export default function ProjectDetail() {
                   )}
                 </>
               )}
+              {activeView === ADMIN_PROJECT_VIEWS.USERS && (
+                <>
+                  {assigneesLoading && !projectAssignees.length ? (
+                    <div className="px-4 py-12 text-center text-black/60 space-y-3">
+                      <Spinner />
+                      <p className="text-sm">Loading assignees…</p>
+                    </div>
+                  ) : projectAssignees.length ? (
+                    projectAssignees.map(({ user, stats }) => (
+                      <Link
+                        key={user._id}
+                        to={`/admin/users/${user._id}`}
+                        className="block p-4 space-y-1.5 hover:bg-primary-50/70 transition"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-primary-800">{user.name || "Unknown user"}</p>
+                          <span className={`text-[10px] font-semibold ${user.isVerified ? "text-emerald-700" : "text-amber-700"}`}>
+                            {user.isVerified ? "Verified" : "Pending"}
+                          </span>
+                        </div>
+                        <p className="font-mono text-[11px] text-black/60">{user.username || "-"}</p>
+                        <p className="text-xs text-black/70 truncate">{user.email || "-"}</p>
+                        <div className="text-[11px] text-black/70">
+                          {stats.completed}/{stats.totalTasks} completed · {stats.inProgress} in progress · {stats.pending} pending
+                        </div>
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="px-4 py-12 text-center text-black/60">
+                      <User2 size={28} className="mx-auto mb-2 opacity-30" />
+                      No annotators assigned yet.
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="hidden sm:block">
               {activeView === ADMIN_PROJECT_VIEWS.TASKS ? (
-                <table ref={desktopTableRef} className="w-full text-sm table-fixed display">
-                  <thead>
-                    <tr className="border-b border-[#d2dad0] bg-primary-50/70">
-                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[15%]">Task ID</th>
-                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[20%]">Dialogue ID</th>
-                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[50%]">Chinese Transcript</th>
-                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[15%]">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayedTasks.map((t) => (
-                      <tr key={t._id} className="border-b border-[#d8e0d5] hover:bg-primary-50/60 transition">
-                        <td className="px-2 py-3.5 w-[15%]">
-                          <span className="font-mono text-xs text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded block truncate">{t.taskId}</span>
-                        </td>
-                        <td className="px-2 py-3.5 w-[20%]">
-                          <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{t.dialogueId}</span>
-                        </td>
-                        <td className="px-2 py-3.5 w-[50%]">
-                          <div className="text-black/80 text-xs truncate" title={t.chineseTranscript}>{t.chineseTranscript}</div>
-                        </td>
-                        <td className="px-2 py-3.5 w-[15%]">
-                          <div className="flex justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openEdit(t)}
-                              className="px-2 py-1 rounded bg-[#dbe7d8] text-black hover:bg-[#c7d7c4] transition text-[11px] font-semibold inline-flex items-center gap-1"
-                              title="Edit task"
-                            >
-                              <Pencil size={12} /> Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(t._id)}
-                              className="px-2 py-1 rounded border border-transparent hover:bg-red-100 text-black/70 hover:text-red-700 transition text-[11px] font-semibold inline-flex items-center gap-1"
-                              title="Delete task"
-                            >
-                              <Trash2 size={12} /> Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {!displayedTasks.length && (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-12 text-center text-black/60">
-                          <Mic2 size={32} className="mx-auto mb-2 opacity-30" />
-                          No tasks yet. Add your first task.
-                        </td>
-                      </tr>
+                <>
+                  {/* Filter chips + bulk-delete toolbar */}
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    {[
+                      { key: "all", label: "All" },
+                      { key: "pending", label: "Pending" },
+                      { key: "in-progress", label: "In-progress" },
+                      { key: "verified", label: "Verified" },
+                      { key: "corrected", label: "Corrected" },
+                      { key: "completed", label: "Completed" },
+                      { key: "discarded", label: "Discarded" },
+                      { key: "skipped", label: "Skipped" },
+                    ].map((f) => {
+                      const count = statusCounts[f.key] || 0;
+                      const isActive = statusFilter === f.key;
+                      return (
+                        <button
+                          key={f.key}
+                          type="button"
+                          onClick={() => setStatusFilter(f.key)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition ${
+                            isActive
+                              ? "bg-primary-700 text-white"
+                              : "bg-white border border-primary-100 text-primary-800 hover:bg-primary-50"
+                          }`}
+                        >
+                          {f.label}
+                          <span className={`inline-block min-w-[18px] text-center rounded-full px-1.5 ${
+                            isActive ? "bg-white/20 text-white" : "bg-primary-100 text-primary-800"
+                          }`}>{count}</span>
+                        </button>
+                      );
+                    })}
+
+                    <div className="grow" />
+
+                    {selectedTaskIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkDelete(true)}
+                        disabled={bulkDeleting}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
+                      >
+                        <Trash2 size={12} /> Delete selected ({selectedTaskIds.size})
+                      </button>
                     )}
-                  </tbody>
-                </table>
+                  </div>
+
+                  <table ref={desktopTableRef} className="w-full text-sm table-fixed display">
+                    <thead>
+                      <tr className="border-b border-[#d2dad0] bg-primary-50/70">
+                        <th className="text-left px-2 py-3 w-[5%]">
+                          <input
+                            type="checkbox"
+                            aria-label="Select all visible tasks"
+                            checked={allDisplayedSelected}
+                            onChange={toggleSelectAll}
+                          />
+                        </th>
+                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[13%]">Task ID</th>
+                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[17%]">Dialogue ID</th>
+                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[38%]">Chinese Transcript</th>
+                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[12%]">Status</th>
+                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[15%]">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedTasks.map((t) => (
+                        <tr key={t._id} className={`border-b border-[#d8e0d5] hover:bg-primary-50/60 transition ${selectedTaskIds.has(t._id) ? "bg-primary-50" : ""}`}>
+                          <td className="px-2 py-3.5 w-[5%]">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select task ${t.taskId}`}
+                              checked={selectedTaskIds.has(t._id)}
+                              onChange={() => toggleSelectTask(t._id)}
+                            />
+                          </td>
+                          <td className="px-2 py-3.5 w-[13%]">
+                            <span className="font-mono text-xs text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded block truncate">{t.taskId}</span>
+                          </td>
+                          <td className="px-2 py-3.5 w-[17%]">
+                            <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{t.dialogueId}</span>
+                          </td>
+                          <td className="px-2 py-3.5 w-[38%]">
+                            <div className="text-black/80 text-xs truncate" title={t.chineseTranscript}>{t.chineseTranscript}</div>
+                          </td>
+                          <td className="px-2 py-3.5 w-[12%]">
+                            <span className="text-[11px] capitalize text-black/75">{t.overallStatus || "pending"}</span>
+                          </td>
+                          <td className="px-2 py-3.5 w-[15%]">
+                            <div className="flex justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEdit(t)}
+                                className="px-2 py-1 rounded bg-[#dbe7d8] text-black hover:bg-[#c7d7c4] transition text-[11px] font-semibold inline-flex items-center gap-1"
+                                title="Edit task"
+                              >
+                                <Pencil size={12} /> Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(t._id)}
+                                className="px-2 py-1 rounded border border-transparent hover:bg-red-100 text-black/70 hover:text-red-700 transition text-[11px] font-semibold inline-flex items-center gap-1"
+                                title="Delete task"
+                              >
+                                <Trash2 size={12} /> Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {!displayedTasks.length && (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-12 text-center text-black/60">
+                            <Mic2 size={32} className="mx-auto mb-2 opacity-30" />
+                            No tasks yet. Add your first task.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </>
               ) : activeView === ADMIN_PROJECT_VIEWS.SUBMISSIONS ? (
                 <>
                 <table className="w-full text-sm table-fixed">
@@ -1163,7 +1411,7 @@ export default function ProjectDetail() {
                   />
                 )}
                 </>
-              ) : (
+              ) : activeView === ADMIN_PROJECT_VIEWS.ERRONEOUS ? (
                 <>
                 <table className="w-full text-sm table-fixed">
                   <thead>
@@ -1241,10 +1489,116 @@ export default function ProjectDetail() {
                   />
                 )}
                 </>
+              ) : activeView === ADMIN_PROJECT_VIEWS.USERS ? (
+                <table className="w-full text-sm table-fixed">
+                  <thead>
+                    <tr className="border-b border-[#d2dad0] bg-primary-50/70">
+                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[25%]">Name</th>
+                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[18%]">Username</th>
+                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[25%]">Email</th>
+                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[10%]">Verified</th>
+                      <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[22%]">Progress</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assigneesLoading && !projectAssignees.length ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-10 text-center text-black/60">
+                          <Spinner />
+                          <p className="mt-2 text-sm">Loading assignees…</p>
+                        </td>
+                      </tr>
+                    ) : projectAssignees.length ? (
+                      projectAssignees.map(({ user, stats }) => (
+                        <tr key={user._id} className="border-b border-[#d8e0d5] hover:bg-primary-50/60 transition">
+                          <td className="px-2 py-3.5 w-[25%]">
+                            <Link
+                              to={`/admin/users/${user._id}`}
+                              className="text-primary-800 hover:text-primary-900 font-medium text-sm"
+                            >
+                              {user.name || "Unknown user"}
+                            </Link>
+                          </td>
+                          <td className="px-2 py-3.5 w-[18%]">
+                            <span className="font-mono text-[11px] text-black/70">{user.username || "-"}</span>
+                          </td>
+                          <td className="px-2 py-3.5 w-[25%]">
+                            <span className="text-xs text-black/70 truncate block" title={user.email}>{user.email || "-"}</span>
+                          </td>
+                          <td className="px-2 py-3.5 w-[10%]">
+                            <span className={`text-[11px] font-semibold ${user.isVerified ? "text-emerald-700" : "text-amber-700"}`}>
+                              {user.isVerified ? "Verified" : "Pending"}
+                            </span>
+                          </td>
+                          <td className="px-2 py-3.5 w-[22%]">
+                            <div className="text-xs text-black/75">
+                              {stats.completed}/{stats.totalTasks} completed
+                            </div>
+                            <div className="text-[11px] text-black/55">
+                              {stats.inProgress} in progress · {stats.discarded} discarded · {stats.pending} pending
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-12 text-center text-black/60">
+                          <User2 size={32} className="mx-auto mb-2 opacity-30" />
+                          No annotators assigned yet. Verify a user to auto-assign their dedicated project, or use the user admin page to add assignments.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                null
               )}
             </div>
           </div>
         </>
+      )}
+
+      {confirmBulkDelete && (
+        <Modal
+          title="Delete selected tasks"
+          onClose={() => !bulkDeleting && setConfirmBulkDelete(false)}
+          size="md"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <Trash2 size={18} className="text-red-600" />
+              </div>
+              <div className="text-sm text-black/80">
+                <p className="font-medium mb-1">
+                  Delete {selectedTaskIds.size} task{selectedTaskIds.size === 1 ? "" : "s"}?
+                </p>
+                <p>
+                  This also removes every annotator's submission and recorded audio
+                  for those tasks. This can't be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setConfirmBulkDelete(false)}
+                disabled={bulkDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={runBulkDelete}
+                disabled={bulkDeleting}
+              >
+                {bulkDeleting ? "Deleting…" : `Delete ${selectedTaskIds.size}`}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {modal === "form" && (
