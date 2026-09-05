@@ -101,6 +101,40 @@
     color: #fff !important;
   }
 
+  /* Light "island" surfaces nested inside a dark container revert to dark
+     text. Without this, the mic button (bg-white circle inside the
+     bg-primary-700 recorder pill) inherits the dark-container's white text,
+     making the icon invisible. Any element whose bg-* class is a light shade
+     wins back the dark text for itself and its descendants. Order matters -
+     this block must sit AFTER the dark-bg block above to override it. */
+  [class~="bg-white"],       [class~="bg-white"] *,
+  [class~="bg-primary-50"],  [class~="bg-primary-50"] *,
+  [class~="bg-primary-100"], [class~="bg-primary-100"] *,
+  [class~="bg-primary-200"], [class~="bg-primary-200"] *,
+  [class~="bg-emerald-50"],  [class~="bg-emerald-50"] *,
+  [class~="bg-emerald-100"], [class~="bg-emerald-100"] *,
+  [class~="bg-emerald-200"], [class~="bg-emerald-200"] *,
+  [class~="bg-red-50"],      [class~="bg-red-50"] *,
+  [class~="bg-red-100"],     [class~="bg-red-100"] *,
+  [class~="bg-red-200"],     [class~="bg-red-200"] *,
+  [class~="bg-blue-50"],     [class~="bg-blue-50"] *,
+  [class~="bg-blue-100"],    [class~="bg-blue-100"] *,
+  [class~="bg-blue-200"],    [class~="bg-blue-200"] *,
+  [class~="bg-amber-50"],    [class~="bg-amber-50"] *,
+  [class~="bg-amber-100"],   [class~="bg-amber-100"] *,
+  [class~="bg-amber-200"],   [class~="bg-amber-200"] *,
+  [class~="bg-slate-50"],    [class~="bg-slate-50"] *,
+  [class~="bg-slate-100"],   [class~="bg-slate-100"] *,
+  [class~="bg-slate-200"],   [class~="bg-slate-200"] *,
+  [class~="bg-gray-50"],     [class~="bg-gray-50"] *,
+  [class~="bg-gray-100"],    [class~="bg-gray-100"] *,
+  [class~="bg-gray-200"],    [class~="bg-gray-200"] *,
+  [class~="bg-lime-50"],     [class~="bg-lime-50"] *,
+  [class~="bg-lime-100"],    [class~="bg-lime-100"] *,
+  [class~="bg-lime-200"],    [class~="bg-lime-200"] * {
+    color: #000 !important;
+  }
+
   .app-toast,
   .app-toast * {
     color: #fff !important;
