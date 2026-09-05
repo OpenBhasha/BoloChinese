@@ -763,6 +763,14 @@ export default function ProjectDetail() {
                 onChange={handleExcelSelection}
               />
               <button
+                onClick={handleDownloadTemplate}
+                className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
+                disabled={downloadingTemplate}
+                title="Download the Excel template with dialogue_id, chinese_transcript, and pinyin columns"
+              >
+                <Download size={16} /> {downloadingTemplate ? "Downloading..." : "Download Template"}
+              </button>
+              <button
                 onClick={() => excelInputRef.current?.click()}
                 className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
                 disabled={bulkUploading}

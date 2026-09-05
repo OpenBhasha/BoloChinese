@@ -1,12 +1,11 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { AlertTriangle, CheckCircle2, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Pencil, Trash2 } from "lucide-react";
 import Modal from "../ui/Modal";
 import {
   verifyPinyin,
   correctTranscript,
   discardTask,
-  reconsiderTask,
 } from "../../api/user.api";
 import { measureEdit, HEAVY_EDIT_RATIO } from "../../utils/textDiff";
 
@@ -75,7 +74,6 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
   const [pinyinDraft, setPinyinDraft] = useState(task.correctedPinyin || task.pinyin);
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [discarding, setDiscarding] = useState(false);
-  const [reconsidering, setReconsidering] = useState(false);
   const [showNoModal, setShowNoModal] = useState(false);
 
   const displayChinese = task.correctedChineseTranscript || task.chineseTranscript;
@@ -198,41 +196,6 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
     }
   };
 
-  const handleReconsider = async () => {
-    const hasAudio = Boolean(task.audio?.publicId || task.audio?.url);
-    if (hasAudio) {
-      const proceed = window.confirm(
-        "You've already recorded audio for this task. Re-opening verification will require you to record the audio again. Continue?"
-      );
-      if (!proceed) return;
-    }
-
-    setReconsidering(true);
-    try {
-      await reconsiderTask(task._id);
-      onTaskUpdate({
-        discarded: { flagged: false, discardedAt: null },
-        pinyinVerified: null,
-        isCorrected: false,
-        status: "in-progress",
-        // Force the recorder back into empty state so the annotator must
-        // re-record after re-verifying. The server-side audio (if any) is
-        // overwritten on the next upload.
-        ...(hasAudio ? { audio: null } : {}),
-      });
-      if (hasAudio) {
-        toast("Please record fresh audio after verifying.");
-      }
-      setChineseDraft(task.chineseTranscript);
-      setPinyinDraft(task.pinyin);
-      setStep("gate");
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to reopen this item.");
-    } finally {
-      setReconsidering(false);
-    }
-  };
-
   if (step === "discarded") {
     return (
       <div className="card border-red-300 bg-red-50">
@@ -263,16 +226,6 @@ export default function TranscriptVerification({ task, onTaskUpdate, nextTask, o
           </span>
         </div>
         <ScriptPanels chinese={displayChinese} pinyin={displayPinyin} editable={false} />
-        {!readOnly && (
-          <button
-            type="button"
-            onClick={handleReconsider}
-            disabled={reconsidering}
-            className="btn-secondary text-xs inline-flex items-center gap-1.5"
-          >
-            <RotateCcw size={13} /> {reconsidering ? "Reopening…" : "Re-open verification"}
-          </button>
-        )}
       </div>
     );
   }

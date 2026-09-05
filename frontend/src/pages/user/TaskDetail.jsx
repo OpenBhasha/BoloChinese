@@ -5,7 +5,7 @@ import { getTaskDetail, getProjectTasks, recordTaskTime } from "../../api/user.a
 import AudioRecorder from "../../components/task/AudioRecorder";
 import TranscriptVerification from "../../components/task/TranscriptVerification";
 import StatusBadge from "../../utils/statusBadge";
-import { CheckCircle2, SkipBack, SkipForward, Lock } from "lucide-react";
+import { CheckCircle2, SkipBack, SkipForward, Lock, PartyPopper } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
 
@@ -45,6 +45,31 @@ function TaskNavBar({ prevTask, nextTask, onNavigate, disableNext }) {
           {disableNext && <Lock size={14} />} Next <SkipForward size={22} />
         </button>
       </div>
+    </div>
+  );
+}
+
+// Full-page success card shown when every task in the project is terminal.
+// Auto-redirects to /user/profile after a short delay so the annotator lands
+// somewhere useful; also gives them a manual button in case they want to
+// skip the wait.
+function ProjectFinished({ onDone }) {
+  useEffect(() => {
+    const t = window.setTimeout(onDone, 3500);
+    return () => window.clearTimeout(t);
+  }, [onDone]);
+  return (
+    <div className="card flex flex-col items-center text-center py-16 max-w-lg mx-auto mt-16">
+      <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+        <PartyPopper size={28} className="text-emerald-700" />
+      </div>
+      <h1 className="text-2xl font-bold text-primary-900 mb-2">Project finished</h1>
+      <p className="text-sm text-black/70 mb-6">
+        You've completed every task in this project. Taking you to your profile…
+      </p>
+      <button type="button" onClick={onDone} className="btn-primary">
+        Go to profile now
+      </button>
     </div>
   );
 }
@@ -178,10 +203,21 @@ export default function TaskDetail() {
   if (loading) return <UserLayout><PageSpinner /></UserLayout>;
   if (!task) return <UserLayout><p className="text-slate-400">Task not found.</p></UserLayout>;
 
+  // "Project finished" = every task in this project is in a terminal state.
+  // When we detect it, show a success card and auto-redirect to the annotator
+  // profile after a moment. Handles the "just submitted the last task" case.
+  const projectFinished = projectTasks.length > 0 && completedCount === projectTasks.length;
+  if (projectFinished) {
+    return (
+      <UserLayout>
+        <ProjectFinished onDone={() => navigate("/user/profile")} />
+      </UserLayout>
+    );
+  }
+
   // Bottom padding keeps the last card clear of the fixed nav bar (64px) and,
   // when the recorder is mounted, the compact recorder panel above it.
   const scrollBottomPad = canRecord ? "pb-56" : "pb-20";
-  const displayNumber = currentTaskIndex >= 0 ? currentTaskIndex + 1 : null;
   const finished = isTaskFinished(task);
   const nextDisabled = !finished;
   // Once submitted (audio uploaded) or discarded, the task is read-only.
@@ -196,13 +232,11 @@ export default function TaskDetail() {
         <div className="mb-4 text-xs text-primary-500">Loading next task...</div>
       )}
 
-      {/* Header - task index instead of raw taskId */}
+      {/* Header - status badge + dialogue id only. The "Task N of M" pill was
+          removed per product ask; the progress bar below still shows N/M. */}
       <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="font-semibold text-sm text-primary-800 bg-primary-100 px-2.5 py-0.5 rounded">
-              {displayNumber !== null ? `Task ${displayNumber} of ${projectTasks.length}` : "Task"}
-            </span>
+          <div className="mb-1">
             <StatusBadge status={task.status} />
           </div>
           <h1 className="text-xl font-bold text-primary-900">{task.dialogueId}</h1>
