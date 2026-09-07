@@ -313,25 +313,6 @@ const deleteTaskSubmission = async (submissionId) => {
   return deleted;
 };
 
-const addAdminCommentToFlag = async (submissionId, adminComment, adminId) => {
-  const submission = await dao.getTaskSubmissionById(submissionId);
-  if (!submission) {
-    const err = new Error("Submission not found.");
-    err.statusCode = 404;
-    throw err;
-  }
-
-  if (!submission.reportedIssue?.flagged) {
-    const err = new Error("Submission is not flagged.");
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const updated = await dao.addAdminCommentToFlag(submissionId, adminComment, adminId);
-  logger.info(`Admin ${adminId} commented on submission ${submissionId}.`);
-  return updated;
-};
-
 // ─── Projects ─────────────────────────────────────────────────────────────────
 const createProject = async ({ name, description, adminId }) => {
   const project = await dao.createProject({ name, description, createdBy: adminId });
@@ -611,8 +592,6 @@ const EXPORT_COLUMNS = [
   { key: "isCorrected", header: "Edited" },
   { key: "editCharCount", header: "Edited Chars" },
   { key: "discarded", header: "Discarded" },
-  { key: "erroneous", header: "Erroneous" },
-  { key: "erroneousReason", header: "Erroneous Reason" },
   // Audio technicals
   { key: "audioPublicId", header: "Audio Public ID" },
   { key: "audioSampleRate", header: "Sample Rate" },
@@ -657,8 +636,6 @@ const toExportRow = (submission) => {
     isCorrected: submission.isCorrected ? "yes" : "no",
     editCharCount: submission.editCharCount || 0,
     discarded: submission.discarded?.flagged ? "yes" : "no",
-    erroneous: submission.erroneous?.flagged ? "yes" : "no",
-    erroneousReason: submission.erroneous?.reason || "",
     audioPublicId: submission.audio?.publicId || "",
     audioSampleRate: submission.audio?.sampleRate || "",
     audioBitDepth: submission.audio?.bitDepth || "",
@@ -760,7 +737,6 @@ module.exports = {
   getSubmissionsByProject,
   getTaskSubmissionById,
   deleteTaskSubmission,
-  addAdminCommentToFlag,
   exportResults,
   prepareStreamingExport,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,

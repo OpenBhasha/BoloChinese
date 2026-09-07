@@ -188,7 +188,7 @@ export default function TaskDetail() {
   );
   const prevTask = currentTaskIndex > 0 ? projectTasks[currentTaskIndex - 1] : null;
   const nextTask = currentTaskIndex >= 0 ? projectTasks[currentTaskIndex + 1] : null;
-  const completedCount = projectTasks.filter((t) => ["completed", "erroneous", "discarded"].includes(t.status)).length;
+  const completedCount = projectTasks.filter((t) => ["completed", "discarded"].includes(t.status)).length;
   const progressPercent = projectTasks.length ? Math.round((completedCount / projectTasks.length) * 100) : 0;
 
   if (loading) return <UserLayout><PageSpinner /></UserLayout>;

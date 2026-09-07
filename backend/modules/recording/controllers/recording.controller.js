@@ -30,7 +30,6 @@ const shapeRecording = (rec) => {
     chineseTranscript,
     pinyin,
     isCorrected: rec?.isCorrected || false,
-    erroneous: rec?.erroneous || { flagged: false, reason: "", markedAt: null },
     project,
     status: rec.status,
   };

@@ -29,7 +29,7 @@ export default function UserDashboard() {
       }
 
       const firstUnfinished = tasks.find(
-        (task) => !["completed", "erroneous", "discarded"].includes(task.status)
+        (task) => !["completed", "discarded"].includes(task.status)
       );
       const taskToOpen = firstUnfinished || tasks[0];
       navigate(`/user/tasks/${taskToOpen._id}`);

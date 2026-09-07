@@ -553,7 +553,7 @@ export default function AdminUsers() {
       )}
 
       <h2 className="text-lg font-bold text-primary-900 mt-10 mb-1">User Progress</h2>
-      <p className="text-primary-400 text-sm mb-4">Assigned, completed, corrected, and erroneous items per user</p>
+      <p className="text-primary-400 text-sm mb-4">Assigned, validated, edited, and discarded items per user</p>
 
       {progressLoading ? <PageSpinner /> : (
         <div className="admin-datatable card p-0 overflow-hidden">
@@ -580,7 +580,6 @@ export default function AdminUsers() {
                   <span>Edited: {u.edited ?? u.corrected ?? 0}</span>
                   <span>Discarded: {u.discarded ?? 0}</span>
                   <span>Recorded: {u.recorded ?? 0}</span>
-                  <span>Erroneous: {u.erroneous}</span>
                   <span>Pending: {u.pending}</span>
                   <span>Audio: {formatDuration(u.audioDurationSeconds)}</span>
                   <span className="font-semibold text-primary-900">{u.progressPercent}%</span>
@@ -596,7 +595,7 @@ export default function AdminUsers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-primary-100 bg-primary-50/30">
-                  {["User", "Assigned", "Validated", "Edited", "Discarded", "Recorded", "Erroneous", "Pending", "Audio", "Progress", ""].map((h) => (
+                  {["User", "Assigned", "Validated", "Edited", "Discarded", "Recorded", "Pending", "Audio", "Progress", ""].map((h) => (
                     <th key={h} className="text-left px-5 py-3.5 text-xs font-semibold text-primary-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -617,7 +616,6 @@ export default function AdminUsers() {
                     <td className="px-5 py-4 text-primary-500">{u.edited ?? u.corrected ?? 0}</td>
                     <td className="px-5 py-4 text-primary-500">{u.discarded ?? 0}</td>
                     <td className="px-5 py-4 text-primary-500">{u.recorded ?? 0}</td>
-                    <td className="px-5 py-4 text-primary-500">{u.erroneous}</td>
                     <td className="px-5 py-4 text-primary-500">{u.pending}</td>
                     <td className="px-5 py-4 text-primary-500 whitespace-nowrap">{formatDuration(u.audioDurationSeconds)}</td>
                     <td className="px-5 py-4 font-semibold text-primary-900">{u.progressPercent}%</td>
@@ -634,7 +632,7 @@ export default function AdminUsers() {
                   </tr>
                 ))}
                 {!paginatedProgress.length && (
-                  <tr><td colSpan={11} className="px-5 py-10 text-center text-slate-500">No users found.</td></tr>
+                  <tr><td colSpan={10} className="px-5 py-10 text-center text-slate-500">No users found.</td></tr>
                 )}
               </tbody>
             </table>

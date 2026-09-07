@@ -17,7 +17,6 @@ const STATUS_FILTERS = [
   { key: "corrected", label: "Corrected" },
   { key: "completed", label: "Completed" },
   { key: "discarded", label: "Discarded" },
-  { key: "skipped", label: "Skipped" },
 ];
 
 const VIEW_STORAGE_KEY = "bolo.user.projectTasks.view";

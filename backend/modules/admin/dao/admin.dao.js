@@ -163,10 +163,7 @@ const STATUS_RANK = [
   "verified",
   "recorded",
   "in-progress",
-  "erroneous",
-  "requires-review",
   "discarded",
-  "skipped",
   "pending",
 ];
 const STATUS_INDEX = new Map(STATUS_RANK.map((s, i) => [s, i]));
@@ -318,8 +315,6 @@ const getPerUserProgress = async () => {
           validated: { $sum: { $cond: [{ $eq: ["$pinyinVerified", true] }, 1, 0] } },
           edited: { $sum: { $cond: [{ $eq: ["$isCorrected", true] }, 1, 0] } },
           discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
-          erroneous: { $sum: { $cond: [{ $eq: ["$status", "erroneous"] }, 1, 0] } },
-          requiresReview: { $sum: { $cond: [{ $eq: ["$status", "requires-review"] }, 1, 0] } },
           recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
           completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
           audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
@@ -348,14 +343,12 @@ const getPerUserProgress = async () => {
       const edited = r.edited || 0;
       const validated = r.validated || 0;
       const discarded = r.discarded || 0;
-      const erroneous = r.erroneous || 0;
-      const requiresReview = r.requiresReview || 0;
       const recorded = r.recorded || 0;
       const audioDurationSeconds = Math.round(r.audioDurationSeconds || 0);
       const submitted = r.submitted || 0;
       const pending = Math.max(0, assigned - submitted);
       const progressPercent = assigned
-        ? Math.round(((completed + erroneous + discarded) / assigned) * 100)
+        ? Math.round(((completed + discarded) / assigned) * 100)
         : 0;
 
       return {
@@ -374,8 +367,6 @@ const getPerUserProgress = async () => {
         edited,
         validated,
         discarded,
-        erroneous,
-        requiresReview,
         recorded,
         audioDurationSeconds,
         pending,
@@ -399,8 +390,8 @@ const getTaskSubmissions = async (taskId) => {
 };
 
 // Every submission for a project, populated for the admin project view's
-// Submissions/Flags/Erroneous tabs. Replaces the old N+1 pattern of one
-// getTaskSubmissions() call per task.
+// Submissions tab. Replaces the old N+1 pattern of one getTaskSubmissions()
+// call per task.
 const getSubmissionsByProject = async (projectId) => {
   return TaskSubmission.find({ projectId })
     .populate("taskId", "taskId dialogueId chineseTranscript pinyin")
@@ -438,20 +429,6 @@ const getTaskSubmissionById = async (submissionId) => {
 
 const deleteTaskSubmission = async (submissionId) => {
   return TaskSubmission.findByIdAndDelete(submissionId).populate("userId", "name email");
-};
-
-const addAdminCommentToFlag = async (submissionId, comment, adminId) => {
-  return TaskSubmission.findByIdAndUpdate(
-    submissionId,
-    {
-      $set: {
-        "reportedIssue.adminComment": comment,
-        "reportedIssue.adminCommentedAt": new Date(),
-        "reportedIssue.adminCommentedBy": adminId,
-      },
-    },
-    { new: true }
-  ).populate("userId", "name email");
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -524,12 +501,10 @@ const getDashboardStats = async () => {
   submissionsByStatus.forEach((s) => { statusMap[s._id] = s.count; });
   const completed = statusMap["completed"] || 0;
   const corrected = statusMap["corrected"] || 0;
-  const erroneous = statusMap["erroneous"] || 0;
   const discardedStatus = statusMap["discarded"] || 0;
-  const requiresReview = statusMap["requires-review"] || 0;
   const inProgress = statusMap["in-progress"] || 0;
   const verified = statusMap["verified"] || 0;
-  const submitted = completed + corrected + erroneous + discardedStatus + requiresReview + inProgress + verified + (statusMap["recorded"] || 0) + (statusMap["skipped"] || 0);
+  const submitted = completed + corrected + discardedStatus + inProgress + verified + (statusMap["recorded"] || 0);
 
   const m = metrics[0] || {};
 
@@ -547,8 +522,6 @@ const getDashboardStats = async () => {
       audioDurationSeconds: Math.round(m.audioDurationSeconds || 0),
       avgAudioDurationSeconds: Math.round((m.avgAudioDurationSeconds || 0) * 10) / 10,
       avgTimePerTaskMs: Math.round(m.avgTimePerTaskMs || 0),
-      erroneous,
-      requiresReview,
       // Rough site-wide indicator only: distinct tasks vs. total per-user submission
       // records can diverge when a project has more than one assigned user. The
       // accurate per-user breakdown lives in getPerUserProgress().
@@ -574,7 +547,6 @@ module.exports = {
   getSubmissionsExportCursor,
   getTaskSubmissionById,
   deleteTaskSubmission,
-  addAdminCommentToFlag,
   getDashboardStats,
   getPerUserProgress,
   getUserSubmissions,

@@ -4,7 +4,7 @@ const ctrl = require("./controllers/user.controller");
 const { authenticate, requireRole } = require("../../middlewares/auth");
 const validate = require("../../middlewares/validate");
 const { validateObjectId } = require("../../validators/common.validator");
-const { verifyPinyinValidator, correctTranscriptValidator, markErroneousValidator } = require("./validators/user.validator");
+const { verifyPinyinValidator, correctTranscriptValidator } = require("./validators/user.validator");
 const audioUpload = require("./services/audioUpload.service");
 
 // All user routes require authentication + user role
@@ -37,12 +37,6 @@ router.post(
 // GET /api/user/tasks/:id/audio  - stream audio directly from Cloudinary
 router.get("/tasks/:id/audio", [validateObjectId("id"), validate], ctrl.streamAudio);
 
-// POST /api/user/tasks/:id/skip
-router.post("/tasks/:id/skip", [validateObjectId("id"), validate], ctrl.skipTask);
-
-// POST /api/user/tasks/:id/flag
-router.post("/tasks/:id/flag", [validateObjectId("id"), validate], ctrl.flagTaskIssue);
-
 // PATCH /api/user/tasks/:id/verify-pinyin
 router.patch(
   "/tasks/:id/verify-pinyin",
@@ -55,13 +49,6 @@ router.patch(
   "/tasks/:id/correct",
   [validateObjectId("id"), ...correctTranscriptValidator, validate],
   ctrl.correctTranscript
-);
-
-// PATCH /api/user/tasks/:id/mark-erroneous
-router.patch(
-  "/tasks/:id/mark-erroneous",
-  [validateObjectId("id"), ...markErroneousValidator, validate],
-  ctrl.markErroneous
 );
 
 // POST /api/user/tasks/:id/discard

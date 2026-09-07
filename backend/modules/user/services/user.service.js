@@ -61,7 +61,6 @@ const getTaskDetail = async (taskId, userId) => {
     correctedPinyin: submission?.correctedPinyin || "",
     isCorrected: submission?.isCorrected || false,
     editCharCount: submission?.editCharCount || 0,
-    erroneous: submission?.erroneous || { flagged: false, reason: "", markedAt: null },
     discarded: submission?.discarded || { flagged: false, discardedAt: null },
     audioVerifiedAt: submission?.audioVerifiedAt || null,
   };
@@ -70,12 +69,6 @@ const getTaskDetail = async (taskId, userId) => {
 const uploadTaskAudio = async (taskId, audioBuffer, userId, fileSize) => {
   // Validate task ownership
   const existing = await getTaskDetail(taskId, userId);
-
-  if (existing.erroneous?.flagged) {
-    const err = new Error("This item is marked erroneous. Reconsider it before recording audio.");
-    err.statusCode = 400;
-    throw err;
-  }
 
   if (existing.discarded?.flagged) {
     const err = new Error("This item was discarded. Reconsider it before recording audio.");
@@ -121,18 +114,6 @@ const uploadTaskAudio = async (taskId, audioBuffer, userId, fileSize) => {
   return getTaskDetail(taskId, userId);
 };
 
-const skipTask = async (taskId, userId) => {
-  const existing = await getTaskDetail(taskId, userId);
-  await dao.markTaskSkipped(taskId, existing.projectId, userId);
-  return getTaskDetail(taskId, userId);
-};
-
-const flagTaskIssue = async (taskId, userId, note = "") => {
-  const existing = await getTaskDetail(taskId, userId);
-  await dao.reportTaskIssue(taskId, existing.projectId, userId, note);
-  return getTaskDetail(taskId, userId);
-};
-
 const verifyPinyin = async (taskId, userId, correct) => {
   const existing = await getTaskDetail(taskId, userId);
   await dao.updateSubmissionVerification(taskId, existing.projectId, userId, correct);
@@ -155,12 +136,6 @@ const correctTranscript = async (taskId, userId, { correctedChineseTranscript, c
     correctedPinyin,
     editCharCount: distance,
   });
-  return getTaskDetail(taskId, userId);
-};
-
-const markErroneous = async (taskId, userId, reason) => {
-  const existing = await getTaskDetail(taskId, userId);
-  await dao.markSubmissionErroneous(taskId, existing.projectId, userId, reason);
   return getTaskDetail(taskId, userId);
 };
 
@@ -233,11 +208,8 @@ module.exports = {
   getProjectTasks,
   getTaskDetail,
   uploadAudio: uploadTaskAudio,
-  skipTask,
-  flagTaskIssue,
   verifyPinyin,
   correctTranscript,
-  markErroneous,
   discardTask,
   reconsiderTask,
   recordTimeSpent,

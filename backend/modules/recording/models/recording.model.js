@@ -37,7 +37,7 @@ const recordingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "in-progress", "completed", "skipped"],
+      enum: ["pending", "in-progress", "completed"],
       default: "pending",
       index: true,
     },

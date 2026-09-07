@@ -272,7 +272,7 @@ export default function UserProfile() {
             {projects.map((p) => {
               const stats = p.stats || {};
               const total = stats.total || 0;
-              const done = (stats.completed || 0) + (stats.erroneous || 0);
+              const done = (stats.completed || 0) + (stats.discarded || 0);
               const pct = total ? Math.round((done / total) * 100) : 0;
               return (
                 <li key={p._id} className="py-3 flex items-center justify-between gap-3">

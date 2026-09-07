@@ -93,33 +93,6 @@ const streamAudio = async (req, res, next) => {
   }
 };
 
-const skipTask = async (req, res, next) => {
-  try {
-    const task = await userSvc.skipTask(req.params.id, req.user.id);
-    return successResponse(res, "Task skipped.", {
-      taskId: task.taskId,
-      status: task.status,
-    });
-  } catch (err) {
-    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
-    next(err);
-  }
-};
-
-const flagTaskIssue = async (req, res, next) => {
-  try {
-    const note = String(req.body?.note || "").trim();
-    const task = await userSvc.flagTaskIssue(req.params.id, req.user.id, note);
-    return successResponse(res, "Task issue reported.", {
-      taskId: task.taskId,
-      reportedIssue: task.reportedIssue || { flagged: true },
-    });
-  } catch (err) {
-    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
-    next(err);
-  }
-};
-
 const verifyPinyin = async (req, res, next) => {
   try {
     const task = await userSvc.verifyPinyin(req.params.id, req.user.id, req.body.correct);
@@ -145,20 +118,6 @@ const correctTranscript = async (req, res, next) => {
       status: task.status,
       correctedChineseTranscript: task.correctedChineseTranscript,
       correctedPinyin: task.correctedPinyin,
-    });
-  } catch (err) {
-    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
-    next(err);
-  }
-};
-
-const markErroneous = async (req, res, next) => {
-  try {
-    const task = await userSvc.markErroneous(req.params.id, req.user.id, req.body.reason);
-    return successResponse(res, "Task marked erroneous.", {
-      taskId: task.taskId,
-      status: task.status,
-      erroneous: task.erroneous,
     });
   } catch (err) {
     if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
@@ -231,11 +190,8 @@ module.exports = {
   getTaskDetail,
   uploadAudio,
   streamAudio,
-  skipTask,
-  flagTaskIssue,
   verifyPinyin,
   correctTranscript,
-  markErroneous,
   discardTask,
   reconsiderTask,
   recordTimeSpent,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { ChevronLeft, ClipboardList, CheckCircle2, Pencil, AlertTriangle, Clock3, Percent, BadgeCheck, Trash2, Mic, Timer, Download } from "lucide-react";
+import { ChevronLeft, ClipboardList, CheckCircle2, Pencil, Clock3, Percent, BadgeCheck, Trash2, Mic, Timer, Download } from "lucide-react";
 import AdminLayout from "../../components/layout/AdminLayout";
 import Modal from "../../components/ui/Modal";
 import StatCard from "../../components/ui/StatCard";
@@ -133,7 +133,6 @@ export default function UserDetail() {
         <StatCard label="Discarded" value={progress.discarded ?? 0} icon={Trash2} color="red" />
         <StatCard label="Recorded" value={progress.recorded ?? 0} icon={Mic} color="emerald" />
         <StatCard label="Completed" value={progress.completed} icon={CheckCircle2} color="emerald" />
-        <StatCard label="Erroneous" value={progress.erroneous} icon={AlertTriangle} color="red" />
         <StatCard label="Pending" value={progress.pending} icon={Clock3} color="amber" />
         <StatCard label="Audio Duration" value={formatDuration(progress.audioDurationSeconds)} icon={Timer} color="primary" />
         <StatCard label="Progress" value={`${progress.progressPercent}%`} icon={Percent} color="primary" />
@@ -231,30 +230,12 @@ export default function UserDetail() {
               </div>
             </div>
 
-            {selectedSubmission.erroneous?.flagged && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
-                <p className="label mb-2 text-red-700">Marked Erroneous</p>
-                <p className="text-sm text-black/80 whitespace-pre-wrap break-all">{selectedSubmission.erroneous?.reason}</p>
-                <p className="text-xs text-black/55 mt-2">Marked at {formatDateTime(selectedSubmission.erroneous?.markedAt)}</p>
-              </div>
-            )}
-
             {selectedSubmission.discarded?.flagged && (
               <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
                 <p className="label mb-2 text-red-700">Discarded</p>
                 <p className="text-sm text-black/80">The annotator discarded this item from the edit screen.</p>
                 {selectedSubmission.discarded?.discardedAt && (
                   <p className="text-xs text-black/55 mt-2">Discarded at {formatDateTime(selectedSubmission.discarded.discardedAt)}</p>
-                )}
-              </div>
-            )}
-
-            {selectedSubmission.reportedIssue?.flagged && (
-              <div className="rounded-2xl border border-[#d3b9b1] bg-[#f8efec] p-4">
-                <p className="label mb-2 text-[#8d3d2e]">User's Flag Reason</p>
-                <p className="text-sm text-black/80 whitespace-pre-wrap break-all">{selectedSubmission.reportedIssue?.note || "No reason provided."}</p>
-                {selectedSubmission.reportedIssue?.adminComment && (
-                  <p className="text-xs text-black/60 mt-2">Admin comment: {selectedSubmission.reportedIssue.adminComment}</p>
                 )}
               </div>
             )}

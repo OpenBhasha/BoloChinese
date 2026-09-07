@@ -20,12 +20,9 @@ export const streamAudio = (id) => api.get(`/user/tasks/${id}/audio`, {
   responseType: 'blob' 
 });
 
-export const skipTask = (id) => api.post(`/user/tasks/${id}/skip`);
-export const flagTaskIssue = (id, payload = {}) => api.post(`/user/tasks/${id}/flag`, payload);
 export const verifyPinyin = (id, correct) => api.patch(`/user/tasks/${id}/verify-pinyin`, { correct });
 export const correctTranscript = (id, correctedChineseTranscript, correctedPinyin) =>
   api.patch(`/user/tasks/${id}/correct`, { correctedChineseTranscript, correctedPinyin });
-export const markErroneous = (id, reason) => api.patch(`/user/tasks/${id}/mark-erroneous`, { reason });
 export const discardTask = (id) => api.post(`/user/tasks/${id}/discard`);
 export const reconsiderTask = (id) => api.post(`/user/tasks/${id}/reconsider`);
 export const recordTaskTime = (id, ms) => api.post(`/user/tasks/${id}/time`, { ms });

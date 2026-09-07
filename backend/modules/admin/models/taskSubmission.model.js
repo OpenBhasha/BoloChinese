@@ -41,10 +41,7 @@ const taskSubmissionSchema = new mongoose.Schema(
         "corrected",
         "recorded",
         "completed",
-        "erroneous",
         "discarded",
-        "requires-review",
-        "skipped",
       ],
       default: "pending",
       index: true,
@@ -69,11 +66,6 @@ const taskSubmissionSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    erroneous: {
-      flagged: { type: Boolean, default: false },
-      reason: { type: String, trim: true, maxlength: 1000, default: "" },
-      markedAt: { type: Date, default: null },
-    },
     // Set when the annotator opens the edit screen and chooses Discard instead
     // of submitting a correction. Reversible via the reconsider action.
     discarded: {
@@ -97,14 +89,6 @@ const taskSubmissionSchema = new mongoose.Schema(
     timeSpentMs: {
       type: Number,
       default: 0,
-    },
-    reportedIssue: {
-      flagged: { type: Boolean, default: false },
-      note: { type: String, default: "" },
-      reportedAt: { type: Date, default: null },
-      adminComment: { type: String, default: "" },
-      adminCommentedAt: { type: Date, default: null },
-      adminCommentedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     },
   },
   { timestamps: true }

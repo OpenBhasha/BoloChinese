@@ -32,7 +32,6 @@ const mergeSubmissionFields = (submission) => ({
   correctedPinyin: submission?.correctedPinyin || "",
   isCorrected: submission?.isCorrected || false,
   editCharCount: submission?.editCharCount || 0,
-  erroneous: submission?.erroneous || { flagged: false, reason: "", markedAt: null },
   discarded: submission?.discarded || { flagged: false, discardedAt: null },
   audioVerifiedAt: submission?.audioVerifiedAt || null,
 });
@@ -74,25 +73,24 @@ const getProjectsForUser = async (userId) => {
   projectIds.forEach((pid) => {
     const key = pid.toString();
     const total = taskIdsByProject.get(key)?.size || 0;
-    statsByProject.set(key, { total, completed: 0, inProgress: 0, skipped: 0, erroneous: 0, pending: total });
+    statsByProject.set(key, { total, completed: 0, inProgress: 0, discarded: 0, pending: total });
   });
 
-  const IN_PROGRESS_STATUSES = new Set(["in-progress", "verified", "corrected", "recorded", "requires-review"]);
+  const IN_PROGRESS_STATUSES = new Set(["in-progress", "verified", "corrected", "recorded"]);
 
   submissions.forEach((s) => {
     const key = s.projectId.toString();
     if (!statsByProject.has(key)) {
-      statsByProject.set(key, { total: 0, completed: 0, inProgress: 0, skipped: 0, erroneous: 0, pending: 0 });
+      statsByProject.set(key, { total: 0, completed: 0, inProgress: 0, discarded: 0, pending: 0 });
     }
     const stats = statsByProject.get(key);
     if (s.status === "completed") stats.completed += 1;
-    else if (s.status === "skipped") stats.skipped += 1;
-    else if (s.status === "erroneous" || s.status === "discarded") stats.erroneous += 1;
+    else if (s.status === "discarded") stats.discarded += 1;
     else if (IN_PROGRESS_STATUSES.has(s.status)) stats.inProgress += 1;
   });
 
   statsByProject.forEach((stats) => {
-    const done = stats.completed + stats.inProgress + stats.skipped + stats.erroneous;
+    const done = stats.completed + stats.inProgress + stats.discarded;
     stats.pending = Math.max(0, stats.total - done);
   });
 
@@ -102,8 +100,7 @@ const getProjectsForUser = async (userId) => {
       total: 0,
       completed: 0,
       inProgress: 0,
-      skipped: 0,
-      erroneous: 0,
+      discarded: 0,
       pending: 0,
     },
   }));
@@ -179,41 +176,6 @@ const saveAudio = async (
   );
 };
 
-const markTaskSkipped = async (taskId, projectId, userId) => {
-  return TaskSubmission.findOneAndUpdate(
-    { taskId, userId },
-    {
-      $set: {
-        taskId,
-        projectId,
-        userId,
-        status: "skipped",
-      },
-    },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
-  );
-};
-
-const reportTaskIssue = async (taskId, projectId, userId, note = "") => {
-  return TaskSubmission.findOneAndUpdate(
-    { taskId, userId },
-    {
-      $set: {
-        taskId,
-        projectId,
-        userId,
-        "reportedIssue.flagged": true,
-        "reportedIssue.note": note,
-        "reportedIssue.reportedAt": new Date(),
-      },
-      $setOnInsert: {
-        status: "pending",
-      },
-    },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
-  );
-};
-
 const updateSubmissionVerification = async (taskId, projectId, userId, pinyinVerified) => {
   return TaskSubmission.findOneAndUpdate(
     { taskId, userId },
@@ -274,24 +236,6 @@ const markSubmissionDiscarded = async (taskId, projectId, userId) => {
   );
 };
 
-const markSubmissionErroneous = async (taskId, projectId, userId, reason) => {
-  return TaskSubmission.findOneAndUpdate(
-    { taskId, userId },
-    {
-      $set: {
-        taskId,
-        projectId,
-        userId,
-        "erroneous.flagged": true,
-        "erroneous.reason": reason,
-        "erroneous.markedAt": new Date(),
-        status: "erroneous",
-      },
-    },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
-  );
-};
-
 // Increment the annotator's wall-clock time on this task. Upserts a
 // submission stub if one doesn't exist yet (e.g. time recorded before any
 // verification action).
@@ -313,7 +257,6 @@ const reconsiderSubmission = async (taskId, userId) => {
     { taskId, userId },
     {
       $set: {
-        "erroneous.flagged": false,
         "discarded.flagged": false,
         "discarded.discardedAt": null,
         pinyinVerified: null,
@@ -352,8 +295,6 @@ const getUserSubmissionAggregate = async (userId) => {
     corrected: 0,
     verified: 0,
     discarded: 0,
-    skipped: 0,
-    erroneous: 0,
   };
   let audioCount = 0;
   let audioSeconds = 0;
@@ -372,8 +313,6 @@ const getUserSubmissionAggregate = async (userId) => {
     else if (s.status === "corrected") stats.corrected += 1;
     else if (s.status === "verified") stats.verified += 1;
     else if (s.status === "discarded") stats.discarded += 1;
-    else if (s.status === "skipped") stats.skipped += 1;
-    else if (s.status === "erroneous") stats.erroneous += 1;
     else stats.inProgress += 1;
 
     const seconds = Number(s.audio?.durationSeconds || 0);
@@ -419,11 +358,8 @@ module.exports = {
   getTaskByIdForUser,
   getTaskSubmissionForUser,
   saveAudio,
-  markTaskSkipped,
-  reportTaskIssue,
   updateSubmissionVerification,
   updateSubmissionCorrection,
-  markSubmissionErroneous,
   markSubmissionDiscarded,
   reconsiderSubmission,
   incrementTimeSpent,

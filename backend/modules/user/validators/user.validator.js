@@ -17,11 +17,4 @@ const correctTranscriptValidator = [
     .isLength({ max: 20000 }).withMessage("Corrected pinyin must be at most 20000 characters"),
 ];
 
-const markErroneousValidator = [
-  body("reason")
-    .trim()
-    .notEmpty().withMessage("A reason is required to mark this item erroneous")
-    .isLength({ max: 1000 }).withMessage("Reason must be at most 1000 characters"),
-];
-
-module.exports = { verifyPinyinValidator, correctTranscriptValidator, markErroneousValidator };
+module.exports = { verifyPinyinValidator, correctTranscriptValidator };

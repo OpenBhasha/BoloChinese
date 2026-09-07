@@ -96,6 +96,5 @@ router.get(
 router.get("/tasks/:id/submissions", [validateObjectId("id"), validate], ctrl.getTaskSubmissions);
 router.get("/submissions/:id/audio", [validateObjectId("id"), validate], ctrl.streamSubmissionAudio);
 router.delete("/submissions/:id", [validateObjectId("id"), validate], ctrl.deleteSubmission);
-router.patch("/submissions/:id/flag-comment", [validateObjectId("id"), validate], ctrl.addAdminCommentToFlag);
 
 module.exports = router;
