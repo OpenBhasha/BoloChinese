@@ -56,11 +56,8 @@ export default function AdminDashboard() {
               <h2 className="text-sm font-semibold text-primary-500 uppercase tracking-wide mb-4">Tasks</h2>
               <div className="space-y-3">
                 {[
-                  {
-                    label: `Validated (${stats?.tasks?.edited ?? stats?.tasks?.corrected ?? 0} edited)`,
-                    value: stats?.tasks?.validated ?? 0,
-                    color: "text-emerald-500",
-                  },
+                  { label: "Validated", value: stats?.tasks?.validated ?? 0, color: "text-emerald-500" },
+                  { label: "Edited", value: stats?.tasks?.edited ?? stats?.tasks?.corrected ?? 0, color: "text-lime-600" },
                   { label: "Discarded", value: stats?.tasks?.discarded ?? 0, color: "text-red-500" },
                   { label: "Total Audio Files", value: stats?.tasks?.recorded ?? 0, color: "text-emerald-500" },
                   { label: "Total Audio Duration", value: formatDuration(stats?.tasks?.audioDurationSeconds), color: "text-primary-900" },
