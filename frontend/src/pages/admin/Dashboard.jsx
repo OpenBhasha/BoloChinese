@@ -62,6 +62,8 @@ export default function AdminDashboard() {
                   { label: "Discarded", value: stats?.tasks?.discarded ?? 0, color: "text-red-500" },
                   { label: "Recorded", value: stats?.tasks?.recorded ?? 0, color: "text-emerald-500" },
                   { label: "Recorded Audio", value: formatDuration(stats?.tasks?.audioDurationSeconds), color: "text-primary-900" },
+                  { label: "Avg audio duration", value: formatDuration(stats?.tasks?.avgAudioDurationSeconds), color: "text-primary-900" },
+                  { label: "Avg time per task", value: formatDuration((stats?.tasks?.avgTimePerTaskMs ?? 0) / 1000), color: "text-primary-900" },
                   { label: "Completed", value: stats?.tasks?.completed, color: "text-emerald-500" },
                   { label: "Erroneous", value: stats?.tasks?.erroneous, color: "text-red-500" },
                   { label: "Requires Review", value: stats?.tasks?.requiresReview, color: "text-amber-500" },

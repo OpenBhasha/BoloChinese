@@ -462,15 +462,25 @@ const getDashboardStats = async () => {
   const activeUsers = await User.find({ deletedAt: null }).select("_id isVerified identityFlagged").lean();
   const activeUserIds = activeUsers.map((u) => u._id);
 
+  // Projects are hard-deleted; their tasks and submissions are orphaned rather
+  // than cascaded. Narrow every task/submission stat to projects that still
+  // exist so a wiped project doesn't inflate the dashboard.
+  const activeProjectIds = await Project.find({}).distinct("_id");
+
+  const submissionMatch = {
+    userId: { $in: activeUserIds },
+    projectId: { $in: activeProjectIds },
+  };
+
   const [totalProjects, totalTasks, submissionsByStatus, metrics] = await Promise.all([
     Project.countDocuments(),
-    Task.countDocuments(),
+    Task.countDocuments({ projectId: { $in: activeProjectIds } }),
     TaskSubmission.aggregate([
-      { $match: { userId: { $in: activeUserIds } } },
+      { $match: submissionMatch },
       { $group: { _id: "$status", count: { $sum: 1 } } },
     ]),
     TaskSubmission.aggregate([
-      { $match: { userId: { $in: activeUserIds } } },
+      { $match: submissionMatch },
       {
         $group: {
           _id: null,
@@ -479,6 +489,28 @@ const getDashboardStats = async () => {
           discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
           recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
           audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
+          // Averaged only across submissions where a duration was actually
+          // captured, so pending / discarded rows don't drag the mean to 0.
+          avgAudioDurationSeconds: {
+            $avg: {
+              $cond: [
+                { $gt: [{ $ifNull: ["$audio.durationSeconds", 0] }, 0] },
+                "$audio.durationSeconds",
+                null,
+              ],
+            },
+          },
+          // Same idea for time-spent: only count submissions the annotator
+          // actually opened, otherwise unopened tasks skew the average.
+          avgTimePerTaskMs: {
+            $avg: {
+              $cond: [
+                { $gt: [{ $ifNull: ["$timeSpentMs", 0] }, 0] },
+                "$timeSpentMs",
+                null,
+              ],
+            },
+          },
         },
       },
     ]),
@@ -513,6 +545,8 @@ const getDashboardStats = async () => {
       discarded: m.discarded || 0,
       recorded: m.recorded || 0,
       audioDurationSeconds: Math.round(m.audioDurationSeconds || 0),
+      avgAudioDurationSeconds: Math.round((m.avgAudioDurationSeconds || 0) * 10) / 10,
+      avgTimePerTaskMs: Math.round(m.avgTimePerTaskMs || 0),
       erroneous,
       requiresReview,
       // Rough site-wide indicator only: distinct tasks vs. total per-user submission
