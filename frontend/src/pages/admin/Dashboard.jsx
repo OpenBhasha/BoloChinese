@@ -41,7 +41,6 @@ export default function AdminDashboard() {
                 {[
                   { label: "Verified", value: stats?.users?.verified, color: "text-emerald-500" },
                   { label: "Pending", value: stats?.users?.pending, color: "text-amber-500" },
-                  { label: "Identity flagged", value: stats?.users?.flaggedIdentities ?? 0, color: "text-red-500" },
                   { label: "Total", value: stats?.users?.total, color: "text-primary-900" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="flex items-center justify-between py-2 border-b border-primary-100 last:border-0">
@@ -57,18 +56,17 @@ export default function AdminDashboard() {
               <h2 className="text-sm font-semibold text-primary-500 uppercase tracking-wide mb-4">Tasks</h2>
               <div className="space-y-3">
                 {[
-                  { label: "Validated", value: stats?.tasks?.validated ?? 0, color: "text-emerald-500" },
-                  { label: "Edited", value: stats?.tasks?.edited ?? stats?.tasks?.corrected ?? 0, color: "text-lime-600" },
+                  {
+                    label: `Validated (${stats?.tasks?.edited ?? stats?.tasks?.corrected ?? 0} edited)`,
+                    value: stats?.tasks?.validated ?? 0,
+                    color: "text-emerald-500",
+                  },
                   { label: "Discarded", value: stats?.tasks?.discarded ?? 0, color: "text-red-500" },
-                  { label: "Recorded", value: stats?.tasks?.recorded ?? 0, color: "text-emerald-500" },
-                  { label: "Recorded Audio", value: formatDuration(stats?.tasks?.audioDurationSeconds), color: "text-primary-900" },
-                  { label: "Avg audio duration", value: formatDuration(stats?.tasks?.avgAudioDurationSeconds), color: "text-primary-900" },
+                  { label: "Total Audio Files", value: stats?.tasks?.recorded ?? 0, color: "text-emerald-500" },
+                  { label: "Total Audio Duration", value: formatDuration(stats?.tasks?.audioDurationSeconds), color: "text-primary-900" },
+                  { label: "Avg Audio Duration", value: formatDuration(stats?.tasks?.avgAudioDurationSeconds), color: "text-primary-900" },
                   { label: "Avg time per task", value: formatDuration((stats?.tasks?.avgTimePerTaskMs ?? 0) / 1000), color: "text-primary-900" },
-                  { label: "Completed", value: stats?.tasks?.completed, color: "text-emerald-500" },
-                  { label: "Erroneous", value: stats?.tasks?.erroneous, color: "text-red-500" },
-                  { label: "Requires Review", value: stats?.tasks?.requiresReview, color: "text-amber-500" },
-                  { label: "Pending", value: stats?.tasks?.pending, color: "text-primary-500" },
-                  { label: "Total", value: stats?.tasks?.total, color: "text-primary-900" },
+                  { label: "Total Tasks", value: stats?.tasks?.total, color: "text-primary-900" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="flex items-center justify-between py-2 border-b border-primary-100 last:border-0">
                     <span className="text-sm text-primary-500">{label}</span>
