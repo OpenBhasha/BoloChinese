@@ -47,6 +47,7 @@ export default function AudioRecorder({
   const [currentTime, setCurrentTime] = useState(0);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [activeDevice, setActiveDevice] = useState("");
 
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -135,6 +136,8 @@ export default function AudioRecorder({
     try {
       const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
       streamRef.current = stream;
+      const audioTrack = stream.getAudioTracks()[0];
+      setActiveDevice(audioTrack?.label || "Default microphone");
       recorderRef.current = createPcmRecorder(stream);
       setRecordingElapsed(0);
       recordingStartedAtRef.current = Date.now();
@@ -153,6 +156,7 @@ export default function AudioRecorder({
       const blob = recorder ? await recorder.stop() : null;
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      setActiveDevice("");
 
       if (blob && blob.size > 44) {
         setAudioBlob(blob);
@@ -313,9 +317,25 @@ export default function AudioRecorder({
   };
 
   return (
-    <div className="rounded-xl bg-primary-700 px-3 py-2 flex flex-col gap-2">
-      {/* Row 1: playback strip (only when audio is available - fresh or stored). */}
-      {(hasStoredAudio || audioBlob) && (
+    <div className="rounded-xl bg-primary-700 px-3 py-2 flex flex-wrap items-center justify-center gap-3">
+      {recording && (
+        <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">
+          {formatTime(recordingElapsed)}
+        </span>
+      )}
+
+      {renderActions()}
+
+      <span
+        className="recorder-btn-label text-[11px] truncate max-w-[min(45vw,18rem)]"
+        title={activeDevice || "No active microphone"}
+      >
+        {activeDevice ? `Mic: ${activeDevice}` : "Mic inactive"}
+      </span>
+      <span className="recorder-btn-label text-[11px] shrink-0">16 kHz · 16-bit PCM</span>
+
+      {/* Playback strip for audio already stored on the server - compact inline. */}
+      {hasStoredAudio && (
         <>
           <audio
             ref={audioRef}
