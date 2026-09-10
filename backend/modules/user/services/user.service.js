@@ -18,10 +18,6 @@ const getMyProjects = async (userId) => {
   return dao.getProjectsForUser(userId);
 };
 
-const getMyStats = async (userId) => {
-  return dao.getMyStatsSummary(userId);
-};
-
 const getProjectTasks = async (projectId, userId) => {
   const project = await dao.getProjectById(projectId);
   if (!project) {
@@ -209,7 +205,6 @@ const updateUserProfile = async (userId, patch = {}) => {
 module.exports = {
   getMyTasks,
   getMyProjects,
-  getMyStats,
   getProjectTasks,
   getTaskDetail,
   uploadAudio: uploadTaskAudio,
