@@ -23,7 +23,6 @@ import {
 import { Plus, Trash2, Pencil, ChevronLeft, Mic2, FileAudio, FileText, User2, CalendarClock, Upload, Download, FileDown } from "lucide-react";
 import { PageSpinner, Spinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
-import { paginateRows } from "../../utils/pagination";
 import { formatDateTime, formatFileSize, downloadBlob } from "../../utils/format";
 import toast from "react-hot-toast";
 
@@ -47,7 +46,9 @@ export default function ProjectDetail() {
   const [form, setForm] = useState(EMPTY_TASK);
   const [saving, setSaving] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
-  const [submissionsByTaskId, setSubmissionsByTaskId] = useState({});
+  const [submissionItems, setSubmissionItems] = useState([]);
+  const [submissionPagination, setSubmissionPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [submissionSearchDebounced, setSubmissionSearchDebounced] = useState("");
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [taskSubmissions, setTaskSubmissions] = useState([]);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState("");
@@ -88,14 +89,24 @@ export default function ProjectDetail() {
     }
   }, [submissionAudioUrl]);
 
+  // Debounce the submissions search box.
+  useEffect(() => {
+    const t = setTimeout(() => setSubmissionSearchDebounced(submissionSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [submissionSearch]);
+
+  // Reset to page 1 when the search term changes.
+  useEffect(() => { setSubmissionPage(1); }, [submissionSearchDebounced]);
+
   useEffect(() => {
     if (activeView === ADMIN_PROJECT_VIEWS.TASKS) {
       setSubmissionsLoading(false);
-      return;
+      return undefined;
     }
     if (!project) return undefined;
     if ((project.taskCount || 0) === 0) {
-      setSubmissionsByTaskId({});
+      setSubmissionItems([]);
+      setSubmissionPagination({ page: 1, totalPages: 1, total: 0 });
       setSubmissionsLoading(false);
       return undefined;
     }
@@ -103,36 +114,33 @@ export default function ProjectDetail() {
     let ignore = false;
     setSubmissionsLoading(true);
 
-    // Single project-scoped fetch replaces the old
-    // tasks.map(t => getTaskSubmissions(t._id)) N+1 pattern - one API call
-    // regardless of task count, groups on the client.
-    const loadProjectSubmissions = async () => {
-      try {
-        const res = await getProjectSubmissions(id);
+    // Server-paginated: one page of recordings (hasAudio) for this project,
+    // filtered + sorted in Mongo. No more "fetch every submission, group and
+    // paginate on the client".
+    getProjectSubmissions(id, {
+      page: submissionPage,
+      limit: 20,
+      search: submissionSearchDebounced || undefined,
+      hasAudio: true,
+    })
+      .then((res) => {
         if (ignore) return;
-        const all = res.data.data || [];
-        const nextSubmissions = {};
-        all.forEach((submission) => {
-          const taskKey = submission.taskId?._id
-            ? String(submission.taskId._id)
-            : String(submission.taskId);
-          if (!nextSubmissions[taskKey]) nextSubmissions[taskKey] = [];
-          nextSubmissions[taskKey].push(submission);
-        });
-        setSubmissionsByTaskId(nextSubmissions);
-      } catch {
-        if (!ignore) setSubmissionsByTaskId({});
-      } finally {
+        const data = res.data.data || {};
+        setSubmissionItems(data.items || []);
+        setSubmissionPagination(data.pagination || { page: 1, totalPages: 1, total: 0 });
+      })
+      .catch(() => {
+        if (!ignore) {
+          setSubmissionItems([]);
+          setSubmissionPagination({ page: 1, totalPages: 1, total: 0 });
+        }
+      })
+      .finally(() => {
         if (!ignore) setSubmissionsLoading(false);
-      }
-    };
+      });
 
-    loadProjectSubmissions();
-
-    return () => {
-      ignore = true;
-    };
-  }, [project, activeView, id]);
+    return () => { ignore = true; };
+  }, [project, activeView, id, submissionPage, submissionSearchDebounced]);
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 640);
@@ -214,7 +222,6 @@ export default function ProjectDetail() {
     activeView,
   ]);
 
-  const openCreate = () => { setForm(EMPTY_TASK); setEditing(null); setModal("form"); };
   const openEdit = (t) => {
     setForm({ dialogueId: t.dialogueId, chineseTranscript: t.chineseTranscript, pinyin: t.pinyin, assignedTo: t.assignedTo?._id || "" });
     setEditing(t); setModal("form");
@@ -276,60 +283,27 @@ export default function ProjectDetail() {
   };
 
   const selectedSubmission = taskSubmissions.find((s) => s._id === selectedSubmissionId) || null;
-  // Build rows directly from the flat submissions map instead of iterating a
-  // full tasks[] array (which we no longer fetch). Each submission carries
-  // its taskId populated with { _id, taskId, dialogueId, chineseTranscript,
-  // pinyin }, so it fully replaces the old join.
-  const allSubmissionRows = useMemo(() => {
-    const rows = [];
-    Object.values(submissionsByTaskId).forEach((entries) => {
-      entries.forEach((submission) => {
-        const task = submission.taskId && typeof submission.taskId === "object"
+
+  // The server hands back one page of recordings, each with taskId / userId
+  // populated. Shape it to the { task, submission } rows the table renders.
+  const paginatedSubmissionRows = useMemo(
+    () =>
+      submissionItems.map((submission) => ({
+        task: submission.taskId && typeof submission.taskId === "object"
           ? submission.taskId
-          : { _id: submission.taskId };
-        rows.push({ task, submission });
-      });
-    });
-    return rows;
-  }, [submissionsByTaskId]);
-
-  const submissionRows = useMemo(
-    () => allSubmissionRows.filter(({ submission }) => submission.audio?.url || submission.audio?.publicId),
-    [allSubmissionRows]
+          : { _id: submission.taskId },
+        submission,
+      })),
+    [submissionItems]
   );
-
-  const searchQuery = submissionSearch.trim().toLowerCase();
-
-  const filteredSubmissionRows = useMemo(() => {
-    if (!searchQuery) return submissionRows;
-    return submissionRows.filter(({ task, submission }) => {
-      const values = [
-        task.taskId,
-        task.dialogueId,
-        submission.userId?.name,
-        submission.userId?.email,
-        submission.status,
-      ];
-      return values.some((value) => value?.toLowerCase().includes(searchQuery));
-    });
-  }, [submissionRows, searchQuery]);
-
-  const submissionPagination = useMemo(
-    () => paginateRows(filteredSubmissionRows, submissionPage),
-    [filteredSubmissionRows, submissionPage]
-  );
-
-  const {
-    rows: paginatedSubmissionRows,
-    currentPage: currentSubmissionPage,
-    totalPages: totalSubmissionPages,
-  } = submissionPagination;
+  const currentSubmissionPage = submissionPagination.page || 1;
+  const totalSubmissionPages = submissionPagination.totalPages || 1;
 
   useEffect(() => {
     if (activeView === ADMIN_PROJECT_VIEWS.SUBMISSIONS) {
       setSubmissionPage(1);
     }
-  }, [searchQuery, activeView]);
+  }, [activeView]);
 
   const displayedTasks = useMemo(() => {
     if (statusFilter === "all") return tasks;
@@ -444,12 +418,7 @@ export default function ProjectDetail() {
     try {
       await deleteSubmission(submission._id);
 
-      setSubmissionsByTaskId((prev) => {
-        const next = { ...prev };
-        next[taskId] = (next[taskId] || []).filter((item) => item._id !== submission._id);
-        return next;
-      });
-
+      setSubmissionItems((prev) => prev.filter((item) => item._id !== submission._id));
       setTaskSubmissions((prev) => prev.filter((item) => item._id !== submission._id));
 
       if (selectedSubmissionId === submission._id) {
@@ -713,12 +682,12 @@ export default function ProjectDetail() {
                 </>
               ) : activeView === ADMIN_PROJECT_VIEWS.SUBMISSIONS ? (
                 <>
-                  {submissionsLoading && !submissionRows.length ? (
+                  {submissionsLoading && !paginatedSubmissionRows.length ? (
                     <div className="px-4 py-12 text-center text-black/60 space-y-3">
                       <Spinner />
                       <p className="text-sm">Loading submissions…</p>
                     </div>
-                  ) : filteredSubmissionRows.length ? (
+                  ) : paginatedSubmissionRows.length ? (
                     paginatedSubmissionRows.map(({ task: rowTask, submission }) => (
                       <div key={submission._id} className="p-4 space-y-2 hover:bg-primary-50/70 transition">
                         <div className="flex items-center justify-between gap-2">
@@ -751,10 +720,10 @@ export default function ProjectDetail() {
                   ) : (
                     <div className="px-4 py-12 text-center text-black/60">
                       <Mic2 size={32} className="mx-auto mb-2 opacity-30" />
-                      {searchQuery ? "No submissions match your search." : "No submissions recorded yet."}
+                      {submissionSearchDebounced ? "No submissions match your search." : "No submissions recorded yet."}
                     </div>
                   )}
-                  {filteredSubmissionRows.length > 0 && totalSubmissionPages > 1 && (
+                  {totalSubmissionPages > 1 && (
                     <PaginationControls
                       currentPage={currentSubmissionPage}
                       totalPages={totalSubmissionPages}
@@ -942,14 +911,14 @@ export default function ProjectDetail() {
                     </tr>
                   </thead>
                   <tbody>
-                    {submissionsLoading && !submissionRows.length ? (
+                    {submissionsLoading && !paginatedSubmissionRows.length ? (
                       <tr>
                         <td colSpan={5} className="px-4 py-10 text-center text-black/60">
                           <Spinner />
                           <p className="mt-2 text-sm">Loading submissions…</p>
                         </td>
                       </tr>
-                    ) : filteredSubmissionRows.length ? (
+                    ) : paginatedSubmissionRows.length ? (
                       paginatedSubmissionRows.map(({ task: rowTask, submission }) => (
                         <tr
                           key={submission._id}
@@ -1002,13 +971,13 @@ export default function ProjectDetail() {
                       <tr>
                         <td colSpan={5} className="px-4 py-12 text-center text-black/60">
                           <Mic2 size={32} className="mx-auto mb-2 opacity-30" />
-                          {searchQuery ? "No submissions match your search." : "No submissions recorded yet."}
+                          {submissionSearchDebounced ? "No submissions match your search." : "No submissions recorded yet."}
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
-                {filteredSubmissionRows.length > 0 && totalSubmissionPages > 1 && (
+                {totalSubmissionPages > 1 && (
                   <PaginationControls
                     currentPage={currentSubmissionPage}
                     totalPages={totalSubmissionPages}

@@ -3,7 +3,7 @@ const router = express.Router();
 const ctrl = require("./controllers/admin.controller");
 const { authenticate, requireRole } = require("../../middlewares/auth");
 const validate = require("../../middlewares/validate");
-const { validateObjectId } = require("../../validators/common.validator");
+const { validateObjectId, validatePagination } = require("../../validators/common.validator");
 const taskImportUpload = require("./services/taskImport.service");
 const {
   createProjectValidator,
@@ -88,7 +88,6 @@ router.post(
   taskImportUpload.single("file"),
   ctrl.uploadTasksImport
 );
-router.get("/projects/:projectId/tasks", [validateObjectId("projectId"), validate], ctrl.getTasksByProject);
 router.get("/tasks/:id", [validateObjectId("id"), validate], ctrl.getTaskById);
 router.patch("/tasks/:id", [validateObjectId("id"), ...updateTaskValidator, validate], ctrl.updateTask);
 router.delete("/tasks/:id", [validateObjectId("id"), validate], ctrl.deleteTask);
@@ -104,7 +103,7 @@ router.get(
 );
 router.get(
   "/projects/:projectId/submissions",
-  [validateObjectId("projectId"), validate],
+  [validateObjectId("projectId"), ...validatePagination, validate],
   ctrl.getSubmissionsByProject
 );
 router.get(

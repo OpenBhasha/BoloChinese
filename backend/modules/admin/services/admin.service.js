@@ -2,6 +2,7 @@ const dao = require("../dao/admin.dao");
 const logger = require("../../../logging/logger");
 const xlsx = require("xlsx");
 const { parse: parseCsv } = require("csv-parse/sync");
+const { buildMeta } = require("../../../services/pagination");
 
 const normalizeHeader = (value = "") => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
 
@@ -16,19 +17,6 @@ const toText = (value) => {
   return String(value).trim();
 };
 
-const getTaskSequence = (taskId = "") => {
-  const match = String(taskId).match(/^TASK-(\d+)$/i);
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
-};
-
-const sortTasksByTaskId = (tasks = []) => {
-  return [...tasks].sort((a, b) => {
-    const aSeq = getTaskSequence(a.taskId);
-    const bSeq = getTaskSequence(b.taskId);
-    if (aSeq !== bSeq) return aSeq - bSeq;
-    return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
-  });
-};
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 const getDashboard = async () => dao.getDashboardStats();
@@ -294,14 +282,17 @@ const getTaskSubmissions = async (taskId) => {
   return dao.getTaskSubmissions(taskId);
 };
 
-const getSubmissionsByProject = async (projectId) => {
+const getSubmissionsByProject = async (projectId, { page = 1, limit = 20, status, search, hasAudio } = {}) => {
   const project = await dao.getProjectById(projectId);
   if (!project) {
     const err = new Error("Project not found.");
     err.statusCode = 404;
     throw err;
   }
-  return dao.getSubmissionsByProject(projectId);
+  const { items, total } = await dao.getSubmissionsByProject(projectId, {
+    page, limit, status, search, hasAudio,
+  });
+  return { items, pagination: buildMeta(page, limit, total) };
 };
 
 const getTaskSubmissionById = async (submissionId) => {
@@ -415,11 +406,6 @@ const createTask = async ({ projectId, dialogueId, chineseTranscript, pinyin, as
   await dao.addTaskToProject(projectId, task._id);
   logger.info(`Task created: ${task.taskId} under project ${projectId}`);
   return task;
-};
-
-const getTasksByProject = async (projectId) => {
-  await getProjectById(projectId); // validates project exists
-  return dao.getTasksByProject(projectId);
 };
 
 const getTaskById = async (id) => {
@@ -778,5 +764,5 @@ module.exports = {
   exportResults,
   prepareStreamingExport,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
-  createTask, createTasksFromImport, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
+  createTask, createTasksFromImport, getTaskById, updateTask, deleteTask, deleteTasksBulk,
 };

@@ -5,6 +5,7 @@ const { authenticate, requireRole } = require("../../middlewares/auth");
 const validate = require("../../middlewares/validate");
 const { validateObjectId } = require("../../validators/common.validator");
 const { verifyPinyinValidator, correctTranscriptValidator } = require("./validators/user.validator");
+const { validatePagination } = require("../../validators/common.validator");
 const audioUpload = require("./services/audioUpload.service");
 
 // All user routes require authentication + user role
@@ -14,14 +15,21 @@ router.use(authenticate, requireRole("user"));
 router.get("/me", ctrl.getMyProfile);
 router.patch("/me", ctrl.updateMyProfile);
 
-// GET /api/user/tasks
-router.get("/tasks", ctrl.getMyTasks);
-
 // GET /api/user/projects
 router.get("/projects", ctrl.getMyProjects);
 
-// GET /api/user/projects/:id/tasks
-router.get("/projects/:id/tasks", [validateObjectId("id"), validate], ctrl.getProjectTasks);
+// GET /api/user/projects/:id/tasks?page&limit&status&search  - paginated
+router.get(
+  "/projects/:id/tasks",
+  [validateObjectId("id"), ...validatePagination, validate],
+  ctrl.getProjectTasks
+);
+
+// GET /api/user/projects/:id/tasks/summary  - filter-chip counts
+router.get("/projects/:id/tasks/summary", [validateObjectId("id"), validate], ctrl.getProjectTaskSummary);
+
+// GET /api/user/projects/:id/next-task  - first unfinished task id
+router.get("/projects/:id/next-task", [validateObjectId("id"), validate], ctrl.getNextProjectTask);
 
 // GET /api/user/tasks/:id
 router.get("/tasks/:id", [validateObjectId("id"), validate], ctrl.getTaskDetail);

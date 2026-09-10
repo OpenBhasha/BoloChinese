@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import UserLayout from "../../components/layout/UserLayout";
-import { getMyProjects, getProjectTasks } from "../../api/user.api";
+import { getMyProjects, getNextProjectTask } from "../../api/user.api";
 import { FolderOpen, Mic2 } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
@@ -20,19 +20,13 @@ export default function UserDashboard() {
 
   const openFirstUnfinishedTask = async (projectId) => {
     try {
-      const r = await getProjectTasks(projectId);
-      const tasks = r.data.data.tasks || [];
-
-      if (tasks.length === 0) {
+      const r = await getNextProjectTask(projectId);
+      const taskId = r.data.data?.taskId;
+      if (!taskId) {
         toast("This project has no tasks yet.");
         return;
       }
-
-      const firstUnfinished = tasks.find(
-        (task) => !["completed", "discarded"].includes(task.status)
-      );
-      const taskToOpen = firstUnfinished || tasks[0];
-      navigate(`/user/tasks/${taskToOpen._id}`);
+      navigate(`/user/tasks/${taskId}`);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to open project");
     }

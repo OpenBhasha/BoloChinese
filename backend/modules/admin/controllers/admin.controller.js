@@ -4,6 +4,7 @@ const backupSvc = require("../services/backup.service");
 const cleanupSvc = require("../services/cleanup.service");
 const resetSvc = require("../services/reset.service");
 const { successResponse, errorResponse, notFoundResponse } = require("../../../responses/apiResponse");
+const { parsePagination } = require("../../../services/pagination");
 const logger = require("../../../logging/logger");
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -270,16 +271,6 @@ const uploadTasksImport = async (req, res, next) => {
   }
 };
 
-const getTasksByProject = async (req, res, next) => {
-  try {
-    const tasks = await svc.getTasksByProject(req.params.projectId);
-    return successResponse(res, "Tasks retrieved.", tasks);
-  } catch (err) {
-    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
-    next(err);
-  }
-};
-
 const getTaskById = async (req, res, next) => {
   try {
     const task = await svc.getTaskById(req.params.id);
@@ -322,7 +313,14 @@ const deleteTask = async (req, res, next) => {
 
 const getSubmissionsByProject = async (req, res, next) => {
   try {
-    const submissions = await svc.getSubmissionsByProject(req.params.projectId);
+    const { page, limit } = parsePagination(req.query);
+    const submissions = await svc.getSubmissionsByProject(req.params.projectId, {
+      page,
+      limit,
+      status: req.query.status || undefined,
+      search: req.query.search?.trim() || undefined,
+      hasAudio: req.query.hasAudio === "true" || req.query.hasAudio === "1",
+    });
     return successResponse(res, "Project submissions retrieved.", submissions);
   } catch (err) {
     if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
@@ -443,7 +441,7 @@ module.exports = {
   getUserProfile,
   getAssignedProjectIdsByUser,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
-  createTask, uploadTasksImport, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
+  createTask, uploadTasksImport, getTaskById, updateTask, deleteTask, deleteTasksBulk,
   getTaskSubmissions,
   getSubmissionsByProject,
   streamSubmissionAudio,

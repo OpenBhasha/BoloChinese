@@ -3,9 +3,11 @@ import api from "./axios";
 export const getMyProfile = () => api.get("/user/me");
 export const updateMyProfile = (payload) => api.patch("/user/me", payload);
 
-export const getMyTasks = () => api.get("/user/tasks");
 export const getMyProjects = () => api.get("/user/projects");
-export const getProjectTasks = (id) => api.get(`/user/projects/${id}/tasks`);
+// params: { page, limit, status, search }
+export const getProjectTasks = (id, params = {}) => api.get(`/user/projects/${id}/tasks`, { params });
+export const getProjectTaskSummary = (id) => api.get(`/user/projects/${id}/tasks/summary`);
+export const getNextProjectTask = (id) => api.get(`/user/projects/${id}/next-task`);
 export const getTaskDetail = (id) => api.get(`/user/tasks/${id}`);
 export const uploadAudio = (id, file) => {
   const form = new FormData();

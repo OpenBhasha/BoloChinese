@@ -32,7 +32,9 @@ export const assignProjectToUser = (projectId, userId) =>
 export const unassignProjectFromUser = (projectId, userId) =>
 	api.delete(`/admin/projects/${projectId}/assign/${userId}`);
 export const getProjectAssignees = (projectId) => api.get(`/admin/projects/${projectId}/assignees`);
-export const getProjectSubmissions = (projectId) => api.get(`/admin/projects/${projectId}/submissions`);
+// params: { page, limit, status, search, hasAudio }
+export const getProjectSubmissions = (projectId, params = {}) =>
+	api.get(`/admin/projects/${projectId}/submissions`, { params });
 export const getUserProfileAsAdmin = (userId) => api.get(`/admin/users/${userId}/profile`);
 
 // Projects
@@ -54,7 +56,6 @@ export const uploadTasksImport = (projectId, file) => {
 export const downloadTaskTemplate = () => {
 	return api.get("/public/Template.xlsx", { responseType: "blob" });
 };
-export const getTasksByProject = (projectId) => api.get(`/admin/projects/${projectId}/tasks`);
 export const getTaskById = (id) => api.get(`/admin/tasks/${id}`);
 export const updateTask = (id, data) => api.patch(`/admin/tasks/${id}`, data);
 export const deleteTask = (id) => api.delete(`/admin/tasks/${id}`);

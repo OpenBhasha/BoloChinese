@@ -1,55 +1,24 @@
+const mongoose = require("mongoose");
 const Task = require("../../admin/models/task.model");
 const Project = require("../../admin/models/project.model");
 const ProjectAssignment = require("../../admin/models/projectAssignment.model");
 const TaskSubmission = require("../../admin/models/taskSubmission.model");
 const User = require("../../register/models/user.model");
+const { escapeRegex } = require("../../../services/pagination");
 
-const getTaskSequence = (taskId = "") => {
-  const match = String(taskId).match(/^TASK-(\d+)$/i);
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
-};
+const oid = (v) => new mongoose.Types.ObjectId(String(v));
 
-const sortTasksByTaskId = (tasks = []) => {
-  return [...tasks].sort((a, b) => {
-    const aSeq = getTaskSequence(a.taskId);
-    const bSeq = getTaskSequence(b.taskId);
-    if (aSeq !== bSeq) return aSeq - bSeq;
-    return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
-  });
-};
+// Terminal per-user submission states - the task is done for this annotator.
+const TERMINAL_STATUSES = ["completed", "discarded"];
+
+// Insertion order == taskId order (both come off the same counter). Sorting on
+// (createdAt, _id) is index-covered by { projectId: 1, createdAt: 1 } and has
+// no TASK-9999 -> TASK-10000 lexical cliff.
+const TASK_ORDER = { createdAt: 1, _id: 1 };
 
 const getAssignedProjectIds = async (userId) => {
   const assignments = await ProjectAssignment.find({ userId }).select("projectId").lean();
   return assignments.map((a) => a.projectId);
-};
-
-// Per-user working state merged onto the canonical Task fields for list/detail responses.
-const mergeSubmissionFields = (submission) => ({
-  status: submission?.status || "pending",
-  audio: submission?.audio || null,
-  pinyinVerified: submission?.pinyinVerified ?? null,
-  correctedChineseTranscript: submission?.correctedChineseTranscript || "",
-  correctedPinyin: submission?.correctedPinyin || "",
-  isCorrected: submission?.isCorrected || false,
-  editCharCount: submission?.editCharCount || 0,
-  discarded: submission?.discarded || { flagged: false, discardedAt: null },
-  audioVerifiedAt: submission?.audioVerifiedAt || null,
-});
-
-const getTasksForUser = async (userId) => {
-  const projectIds = await getAssignedProjectIds(userId);
-  if (!projectIds.length) return [];
-
-  const [tasks, submissions] = await Promise.all([
-    Task.find({ projectId: { $in: projectIds } }).lean(),
-    TaskSubmission.find({ userId, projectId: { $in: projectIds } }).lean(),
-  ]);
-
-  const byTaskId = new Map(submissions.map((s) => [s.taskId.toString(), s]));
-  return sortTasksByTaskId(tasks).map((task) => ({
-    ...task,
-    ...mergeSubmissionFields(byTaskId.get(task._id.toString())),
-  }));
 };
 
 const getProjectsForUser = async (userId) => {
@@ -114,18 +83,140 @@ const getProjectById = async (projectId) => {
   return Project.findById(projectId);
 };
 
-const getTasksForUserByProject = async (userId, projectId) => {
-  const [tasks, submissions] = await Promise.all([
-    Task.find({ projectId }).lean(),
-    TaskSubmission.find({ userId, projectId }).lean(),
+// One $lookup pulls just this annotator's submission (0 or 1 - the
+// {taskId,userId} unique index) onto each task so we can filter/sort/page by
+// the derived status in Mongo. $facet returns the page and the total in one
+// round-trip. List rows carry only what the grid/table renders; full text and
+// diff fields load in the task-detail call.
+const buildUserTaskPipeline = (userId, projectId, { status, search } = {}) => {
+  const match = { projectId: oid(projectId) };
+  if (search) {
+    const rx = new RegExp(escapeRegex(search), "i");
+    match.$or = [{ taskId: rx }, { dialogueId: rx }, { chineseTranscript: rx }, { pinyin: rx }];
+  }
+  const pipeline = [
+    { $match: match },
+    {
+      $lookup: {
+        from: TaskSubmission.collection.name,
+        let: { tid: "$_id" },
+        pipeline: [
+          { $match: { $expr: { $and: [{ $eq: ["$taskId", "$$tid"] }, { $eq: ["$userId", oid(userId)] }] } } },
+          { $project: { status: 1, audio: 1, correctedChineseTranscript: 1, correctedPinyin: 1 } },
+        ],
+        as: "sub",
+      },
+    },
+    { $addFields: { sub: { $arrayElemAt: ["$sub", 0] } } },
+    { $addFields: { status: { $ifNull: ["$sub.status", "pending"] } } },
+  ];
+  if (status) pipeline.push({ $match: { status } });
+  return pipeline;
+};
+
+const getTasksForUserByProject = async (
+  userId,
+  projectId,
+  { page = 1, limit = 20, status, search } = {}
+) => {
+  const skip = (page - 1) * limit;
+  const [res] = await Task.aggregate([
+    ...buildUserTaskPipeline(userId, projectId, { status, search }),
+    { $sort: TASK_ORDER },
+    {
+      $facet: {
+        rows: [
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $project: {
+              taskId: 1,
+              dialogueId: 1,
+              chineseTranscript: 1,
+              pinyin: 1,
+              createdAt: 1,
+              status: 1,
+              correctedChineseTranscript: { $ifNull: ["$sub.correctedChineseTranscript", ""] },
+              correctedPinyin: { $ifNull: ["$sub.correctedPinyin", ""] },
+              audio: { $ifNull: ["$sub.audio", null] },
+            },
+          },
+        ],
+        meta: [{ $count: "total" }],
+      },
+    },
   ]);
+  return { tasks: res?.rows || [], total: res?.meta?.[0]?.total || 0 };
+};
 
-  const byTaskId = new Map(submissions.map((s) => [s.taskId.toString(), s]));
+// Filter-chip counts for the project task list. total - submitted = pending.
+const getProjectTaskCountsForUser = async (userId, projectId) => {
+  const [total, rows] = await Promise.all([
+    Task.countDocuments({ projectId }),
+    TaskSubmission.aggregate([
+      { $match: { projectId: oid(projectId), userId: oid(userId) } },
+      { $group: { _id: "$status", n: { $sum: 1 } } },
+    ]),
+  ]);
+  const byStatus = {
+    pending: 0, "in-progress": 0, verified: 0, corrected: 0,
+    recorded: 0, completed: 0, discarded: 0,
+  };
+  let submitted = 0;
+  rows.forEach((r) => {
+    if (r._id in byStatus) byStatus[r._id] = r.n;
+    submitted += r.n;
+  });
+  byStatus.pending = Math.max(0, total - submitted);
+  return { total, byStatus };
+};
 
-  return sortTasksByTaskId(tasks).map((task) => ({
-    ...task,
-    ...mergeSubmissionFields(byTaskId.get(task._id.toString())),
-  }));
+// First task this annotator has not finished (falls back to the first task).
+const getNextTaskForUser = async (userId, projectId) => {
+  const [next] = await Task.aggregate([
+    ...buildUserTaskPipeline(userId, projectId),
+    { $match: { status: { $nin: TERMINAL_STATUSES } } },
+    { $sort: TASK_ORDER },
+    { $limit: 1 },
+    { $project: { _id: 1 } },
+  ]);
+  if (next) return { taskId: next._id, allFinished: false };
+  const first = await Task.findOne({ projectId }).sort(TASK_ORDER).select("_id").lean();
+  return { taskId: first?._id || null, allFinished: !!first };
+};
+
+// Prev/next task ids + position + completion, for the task-detail screen -
+// replaces shipping the whole project task list to the client.
+const getTaskNavForUser = async (userId, projectId, currentTask) => {
+  const before = {
+    projectId,
+    $or: [
+      { createdAt: { $lt: currentTask.createdAt } },
+      { createdAt: currentTask.createdAt, _id: { $lt: currentTask._id } },
+    ],
+  };
+  const after = {
+    projectId,
+    $or: [
+      { createdAt: { $gt: currentTask.createdAt } },
+      { createdAt: currentTask.createdAt, _id: { $gt: currentTask._id } },
+    ],
+  };
+  const [total, beforeCount, prev, next, completedCount] = await Promise.all([
+    Task.countDocuments({ projectId }),
+    Task.countDocuments(before),
+    Task.findOne(before).sort({ createdAt: -1, _id: -1 }).select("_id").lean(),
+    Task.findOne(after).sort(TASK_ORDER).select("_id").lean(),
+    TaskSubmission.countDocuments({ projectId, userId, status: { $in: TERMINAL_STATUSES } }),
+  ]);
+  return {
+    position: beforeCount + 1,
+    total,
+    prevTaskId: prev?._id || null,
+    nextTaskId: next?._id || null,
+    completedCount,
+    projectFinished: total > 0 && completedCount >= total,
+  };
 };
 
 const getTaskByIdForUser = async (taskId) => {
@@ -350,11 +441,13 @@ const getUserSubmissionAggregate = async (userId) => {
 };
 
 module.exports = {
-  getTasksForUser,
   getProjectsForUser,
   userHasProject,
   getProjectById,
   getTasksForUserByProject,
+  getProjectTaskCountsForUser,
+  getNextTaskForUser,
+  getTaskNavForUser,
   getTaskByIdForUser,
   getTaskSubmissionForUser,
   saveAudio,

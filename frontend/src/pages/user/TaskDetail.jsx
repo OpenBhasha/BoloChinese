@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import UserLayout from "../../components/layout/UserLayout";
-import { getTaskDetail, getProjectTasks, recordTaskTime } from "../../api/user.api";
+import { getTaskDetail, recordTaskTime } from "../../api/user.api";
 import AudioRecorder from "../../components/task/AudioRecorder";
 import TranscriptVerification from "../../components/task/TranscriptVerification";
 import StatusBadge from "../../utils/statusBadge";
@@ -83,17 +83,14 @@ export default function TaskDetail() {
   const [task, setTask] = useState(null);
   const [loading, setLoading] = useState(true);
   const [switchingTask, setSwitchingTask] = useState(false);
-  const [activeProjectId, setActiveProjectId] = useState(null);
-  const [projectTasks, setProjectTasks] = useState([]);
   // eslint-disable-next-line no-unused-vars
   const [recorderSubmitting, setRecorderSubmitting] = useState(false);
   // eslint-disable-next-line no-unused-vars
   const [pendingRecording, setPendingRecording] = useState(false);
 
-  const refreshProjectTasks = async (projectId) => {
-    const tasksRes = await getProjectTasks(projectId);
-    setProjectTasks(tasksRes.data.data.tasks || []);
-  };
+  // Prev/next + progress now ride along on the task-detail response (task.nav),
+  // so we no longer pull the whole project task list into the client.
+  const nav = task?.nav || {};
 
   const fetchTask = async (taskId, { smooth = false } = {}) => {
     if (!taskId) return;
@@ -103,20 +100,18 @@ export default function TaskDetail() {
 
     try {
       const taskRes = await getTaskDetail(taskId);
-      const taskData = taskRes.data.data;
-      setTask(taskData);
-
-      if (!activeProjectId || activeProjectId !== String(taskData.projectId) || projectTasks.length === 0) {
-        const tasksRes = await getProjectTasks(taskData.projectId);
-        setProjectTasks(tasksRes.data.data.tasks || []);
-        setActiveProjectId(String(taskData.projectId));
-      }
+      setTask(taskRes.data.data);
     } catch {
       toast.error("Failed to load task");
     } finally {
       if (smooth) setSwitchingTask(false);
       else setLoading(false);
     }
+  };
+
+  const refreshProjectTasks = async () => {
+    // Re-fetch the current task so task.nav (completedCount, prev/next) is fresh.
+    await fetchTask(id, { smooth: true });
   };
 
   useEffect(() => {
@@ -182,14 +177,11 @@ export default function TaskDetail() {
       !task.discarded?.flagged
   );
 
-  const currentTaskIndex = useMemo(
-    () => projectTasks.findIndex((t) => t._id === id),
-    [projectTasks, id]
-  );
-  const prevTask = currentTaskIndex > 0 ? projectTasks[currentTaskIndex - 1] : null;
-  const nextTask = currentTaskIndex >= 0 ? projectTasks[currentTaskIndex + 1] : null;
-  const completedCount = projectTasks.filter((t) => ["completed", "discarded"].includes(t.status)).length;
-  const progressPercent = projectTasks.length ? Math.round((completedCount / projectTasks.length) * 100) : 0;
+  const prevTask = nav.prevTaskId ? { _id: nav.prevTaskId } : null;
+  const nextTask = nav.nextTaskId ? { _id: nav.nextTaskId } : null;
+  const completedCount = nav.completedCount || 0;
+  const totalTasks = nav.total || 0;
+  const progressPercent = totalTasks ? Math.round((completedCount / totalTasks) * 100) : 0;
 
   if (loading) return <UserLayout><PageSpinner /></UserLayout>;
   if (!task) return <UserLayout><p className="text-slate-400">Task not found.</p></UserLayout>;
@@ -197,7 +189,7 @@ export default function TaskDetail() {
   // "Project finished" = every task in this project is in a terminal state.
   // When we detect it, show a success card and auto-redirect to the annotator
   // profile after a moment. Handles the "just submitted the last task" case.
-  const projectFinished = projectTasks.length > 0 && completedCount === projectTasks.length;
+  const projectFinished = Boolean(nav.projectFinished);
   if (projectFinished) {
     return (
       <UserLayout>
@@ -236,7 +228,7 @@ export default function TaskDetail() {
 
       <div className="space-y-4 min-w-0 overflow-x-hidden">
         <div className="card">
-          <p className="text-sm text-black/70 font-medium mb-2">{completedCount}/{projectTasks.length || 0} Completed</p>
+          <p className="text-sm text-black/70 font-medium mb-2">{completedCount}/{totalTasks} Completed</p>
           <div className="w-full h-2 rounded-full bg-black/10 overflow-hidden">
             <div className="h-full bg-primary-700" style={{ width: `${progressPercent}%` }} />
           </div>
@@ -249,15 +241,10 @@ export default function TaskDetail() {
           prevTask={prevTask}
           onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
           onTaskUpdate={(patch) => setTask((t) => ({ ...t, ...patch }))}
-          // Keep the projectTasks list in sync with the current task's
-          // status so the "N/M Completed" progress bar updates immediately
-          // after Discard (which otherwise waits until the annotator
-          // navigates far enough to trigger a refetch).
-          onProjectTaskPatch={(taskId, patch) =>
-            setProjectTasks((prev) =>
-              prev.map((t) => (t._id === taskId ? { ...t, ...patch } : t))
-            )
-          }
+          // After a discard, re-pull the current task so task.nav
+          // (completedCount / projectFinished) is fresh even when the annotator
+          // stays on this task instead of navigating away.
+          onProjectTaskPatch={() => { refreshProjectTasks(); }}
           readOnly={readOnly}
         />
 
@@ -291,9 +278,9 @@ export default function TaskDetail() {
               onSubmittingChange={setRecorderSubmitting}
               onPendingRecordingChange={setPendingRecording}
               onAfterUpload={async ({ background } = {}) => {
-                await refreshProjectTasks(task.projectId);
                 // A background upload means the user has already navigated to the next
                 // task by the time this resolves - refetching here would clobber it.
+                // The foreground refetch pulls fresh task.nav too.
                 if (!background) await fetchTask(id);
               }}
             />

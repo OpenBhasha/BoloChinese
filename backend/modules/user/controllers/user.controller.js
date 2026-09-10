@@ -1,14 +1,8 @@
 const userSvc = require("../services/user.service");
 const { getAudioStream } = require("../../../services/cloudinary.service");
 const { successResponse, errorResponse } = require("../../../responses/apiResponse");
+const { parsePagination } = require("../../../services/pagination");
 const logger = require("../../../logging/logger");
-
-const getMyTasks = async (req, res, next) => {
-  try {
-    const tasks = await userSvc.getMyTasks(req.user.id);
-    return successResponse(res, "Tasks retrieved.", tasks);
-  } catch (err) { next(err); }
-};
 
 const getMyProjects = async (req, res, next) => {
   try {
@@ -19,8 +13,34 @@ const getMyProjects = async (req, res, next) => {
 
 const getProjectTasks = async (req, res, next) => {
   try {
-    const data = await userSvc.getProjectTasks(req.params.id, req.user.id);
+    const { page, limit } = parsePagination(req.query);
+    const data = await userSvc.getProjectTasks(req.params.id, req.user.id, {
+      page,
+      limit,
+      status: req.query.status || undefined,
+      search: req.query.search?.trim() || undefined,
+    });
     return successResponse(res, "Project tasks retrieved.", data);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const getProjectTaskSummary = async (req, res, next) => {
+  try {
+    const data = await userSvc.getProjectTaskSummary(req.params.id, req.user.id);
+    return successResponse(res, "Project task summary retrieved.", data);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+const getNextProjectTask = async (req, res, next) => {
+  try {
+    const data = await userSvc.getNextProjectTask(req.params.id, req.user.id);
+    return successResponse(res, "Next task resolved.", data);
   } catch (err) {
     if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
     next(err);
@@ -29,7 +49,7 @@ const getProjectTasks = async (req, res, next) => {
 
 const getTaskDetail = async (req, res, next) => {
   try {
-    const task = await userSvc.getTaskDetail(req.params.id, req.user.id);
+    const task = await userSvc.getTaskDetail(req.params.id, req.user.id, { withNav: true });
     return successResponse(res, "Task retrieved.", task);
   } catch (err) {
     if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
@@ -184,9 +204,10 @@ const updateMyProfile = async (req, res, next) => {
 };
 
 module.exports = {
-  getMyTasks,
   getMyProjects,
   getProjectTasks,
+  getProjectTaskSummary,
+  getNextProjectTask,
   getTaskDetail,
   uploadAudio,
   streamAudio,

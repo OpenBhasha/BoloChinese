@@ -10,34 +10,51 @@ const logger = require("../../../logging/logger");
 // still submit), but we log them for auditing.
 const HEAVY_EDIT_RATIO = 0.25;
 
-const getMyTasks = async (userId) => {
-  return dao.getTasksForUser(userId);
-};
+const { buildMeta } = require("../../../services/pagination");
 
 const getMyProjects = async (userId) => {
   return dao.getProjectsForUser(userId);
 };
 
-const getProjectTasks = async (projectId, userId) => {
+// Shared project-exists + assigned-to-me guard for every project-scoped read.
+const assertProjectAccess = async (projectId, userId) => {
   const project = await dao.getProjectById(projectId);
   if (!project) {
     const err = new Error("Project not found.");
     err.statusCode = 404;
     throw err;
   }
-
   const hasAccess = await dao.userHasProject(userId, projectId);
   if (!hasAccess) {
     const err = new Error("Access denied. This project is not assigned to you.");
     err.statusCode = 403;
     throw err;
   }
-
-  const tasks = await dao.getTasksForUserByProject(userId, projectId);
-  return { project, tasks };
+  return project;
 };
 
-const getTaskDetail = async (taskId, userId) => {
+const getProjectTasks = async (projectId, userId, { page = 1, limit = 20, status, search } = {}) => {
+  const project = await assertProjectAccess(projectId, userId);
+  const { tasks, total } = await dao.getTasksForUserByProject(userId, projectId, {
+    page, limit, status, search,
+  });
+  return { project, tasks, pagination: buildMeta(page, limit, total) };
+};
+
+const getProjectTaskSummary = async (projectId, userId) => {
+  await assertProjectAccess(projectId, userId);
+  return dao.getProjectTaskCountsForUser(userId, projectId);
+};
+
+const getNextProjectTask = async (projectId, userId) => {
+  await assertProjectAccess(projectId, userId);
+  return dao.getNextTaskForUser(userId, projectId);
+};
+
+// `withNav` adds prev/next + position + completion for the task-detail screen.
+// The many internal callers (verify / correct / discard / audio / time) skip it
+// so those writes don't pay for the extra queries.
+const getTaskDetail = async (taskId, userId, { withNav = false } = {}) => {
   const task = await dao.getTaskByIdForUser(taskId);
   if (!task) {
     const err = new Error("Task not found.");
@@ -51,8 +68,12 @@ const getTaskDetail = async (taskId, userId) => {
     throw err;
   }
 
-  const submission = await dao.getTaskSubmissionForUser(taskId, userId);
-  return {
+  const [submission, nav] = await Promise.all([
+    dao.getTaskSubmissionForUser(taskId, userId),
+    withNav ? dao.getTaskNavForUser(userId, task.projectId, task) : Promise.resolve(undefined),
+  ]);
+
+  const detail = {
     ...task,
     status: submission?.status || "pending",
     audio: submission?.audio || null,
@@ -64,6 +85,8 @@ const getTaskDetail = async (taskId, userId) => {
     discarded: submission?.discarded || { flagged: false, discardedAt: null },
     audioVerifiedAt: submission?.audioVerifiedAt || null,
   };
+  if (nav) detail.nav = nav;
+  return detail;
 };
 
 const uploadTaskAudio = async (taskId, audioBuffer, userId, fileSize) => {
@@ -203,9 +226,10 @@ const updateUserProfile = async (userId, patch = {}) => {
 };
 
 module.exports = {
-  getMyTasks,
   getMyProjects,
   getProjectTasks,
+  getProjectTaskSummary,
+  getNextProjectTask,
   getTaskDetail,
   uploadAudio: uploadTaskAudio,
   verifyPinyin,
