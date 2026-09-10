@@ -83,70 +83,71 @@ const getProjectById = async (projectId) => {
   return Project.findById(projectId);
 };
 
-// One $lookup pulls just this annotator's submission (0 or 1 - the
-// {taskId,userId} unique index) onto each task so we can filter/sort/page by
-// the derived status in Mongo. $facet returns the page and the total in one
-// round-trip. List rows carry only what the grid/table renders; full text and
-// diff fields load in the task-detail call.
-const buildUserTaskPipeline = (userId, projectId, { status, search } = {}) => {
-  const match = { projectId: oid(projectId) };
-  if (search) {
-    const rx = new RegExp(escapeRegex(search), "i");
-    match.$or = [{ taskId: rx }, { dialogueId: rx }, { chineseTranscript: rx }, { pinyin: rx }];
-  }
-  const pipeline = [
-    { $match: match },
-    {
-      $lookup: {
-        from: TaskSubmission.collection.name,
-        let: { tid: "$_id" },
-        pipeline: [
-          { $match: { $expr: { $and: [{ $eq: ["$taskId", "$$tid"] }, { $eq: ["$userId", oid(userId)] }] } } },
-          { $project: { status: 1, audio: 1, correctedChineseTranscript: 1, correctedPinyin: 1 } },
-        ],
-        as: "sub",
-      },
-    },
-    { $addFields: { sub: { $arrayElemAt: ["$sub", 0] } } },
-    { $addFields: { status: { $ifNull: ["$sub.status", "pending"] } } },
-  ];
-  if (status) pipeline.push({ $match: { status } });
-  return pipeline;
-};
+// The annotator's submissions for a project - one indexed {userId,projectId}
+// read, small (a few hundred rows at most). Used to translate a status filter
+// into a task _id set and to merge status/audio onto a page of tasks.
+const getUserSubmissionIndex = async (userId, projectId, projection = "taskId status") =>
+  TaskSubmission.find({ projectId: oid(projectId), userId: oid(userId) }).select(projection).lean();
 
+// Paginate the TASK collection first (index-covered {projectId,createdAt}
+// sort + skip + limit), then look up submissions for just that page. A status
+// filter is resolved to an _id $in/$nin up front off the small submission set.
+// Avoids the per-task correlated $lookup that made this scale with project size.
 const getTasksForUserByProject = async (
   userId,
   projectId,
   { page = 1, limit = 20, status, search } = {}
 ) => {
   const skip = (page - 1) * limit;
-  const [res] = await Task.aggregate([
-    ...buildUserTaskPipeline(userId, projectId, { status, search }),
-    { $sort: TASK_ORDER },
-    {
-      $facet: {
-        rows: [
-          { $skip: skip },
-          { $limit: limit },
-          {
-            $project: {
-              taskId: 1,
-              dialogueId: 1,
-              chineseTranscript: 1,
-              pinyin: 1,
-              createdAt: 1,
-              status: 1,
-              correctedChineseTranscript: { $ifNull: ["$sub.correctedChineseTranscript", ""] },
-              correctedPinyin: { $ifNull: ["$sub.correctedPinyin", ""] },
-              audio: { $ifNull: ["$sub.audio", null] },
-            },
-          },
-        ],
-        meta: [{ $count: "total" }],
-      },
-    },
+  const uid = oid(userId);
+  const match = { projectId: oid(projectId) };
+
+  if (search) {
+    const rx = new RegExp(escapeRegex(search), "i");
+    match.$or = [{ taskId: rx }, { dialogueId: rx }, { chineseTranscript: rx }, { pinyin: rx }];
+  }
+
+  if (status) {
+    const subs = await getUserSubmissionIndex(userId, projectId);
+    match._id =
+      status === "pending"
+        ? { $nin: subs.map((s) => s.taskId) }
+        : { $in: subs.filter((s) => s.status === status).map((s) => s.taskId) };
+  }
+
+  const [total, pageTasks] = await Promise.all([
+    Task.countDocuments(match),
+    Task.find(match)
+      .sort(TASK_ORDER)
+      .skip(skip)
+      .limit(limit)
+      .select("taskId dialogueId chineseTranscript pinyin createdAt")
+      .lean(),
   ]);
-  return { tasks: res?.rows || [], total: res?.meta?.[0]?.total || 0 };
+
+  if (!pageTasks.length) return { tasks: [], total };
+
+  const subs = await TaskSubmission.find({ taskId: { $in: pageTasks.map((t) => t._id) }, userId: uid })
+    .select("taskId status audio correctedChineseTranscript correctedPinyin")
+    .lean();
+  const byTask = new Map(subs.map((s) => [String(s.taskId), s]));
+
+  const tasks = pageTasks.map((t) => {
+    const s = byTask.get(String(t._id));
+    return {
+      _id: t._id,
+      taskId: t.taskId,
+      dialogueId: t.dialogueId,
+      chineseTranscript: t.chineseTranscript,
+      pinyin: t.pinyin,
+      createdAt: t.createdAt,
+      status: s?.status || "pending",
+      correctedChineseTranscript: s?.correctedChineseTranscript || "",
+      correctedPinyin: s?.correctedPinyin || "",
+      audio: s?.audio || null,
+    };
+  });
+  return { tasks, total };
 };
 
 // Filter-chip counts for the project task list. total - submitted = pending.
@@ -172,15 +173,23 @@ const getProjectTaskCountsForUser = async (userId, projectId) => {
 };
 
 // First task this annotator has not finished (falls back to the first task).
+// "Not finished" = no terminal submission, so the first task whose _id is not
+// in the annotator's completed/discarded set.
 const getNextTaskForUser = async (userId, projectId) => {
-  const [next] = await Task.aggregate([
-    ...buildUserTaskPipeline(userId, projectId),
-    { $match: { status: { $nin: TERMINAL_STATUSES } } },
-    { $sort: TASK_ORDER },
-    { $limit: 1 },
-    { $project: { _id: 1 } },
-  ]);
+  const done = await TaskSubmission.find({
+    projectId: oid(projectId),
+    userId: oid(userId),
+    status: { $in: TERMINAL_STATUSES },
+  })
+    .select("taskId")
+    .lean();
+
+  const next = await Task.findOne({ projectId, _id: { $nin: done.map((d) => d.taskId) } })
+    .sort(TASK_ORDER)
+    .select("_id")
+    .lean();
   if (next) return { taskId: next._id, allFinished: false };
+
   const first = await Task.findOne({ projectId }).sort(TASK_ORDER).select("_id").lean();
   return { taskId: first?._id || null, allFinished: !!first };
 };
