@@ -34,6 +34,30 @@ const sortTasksByTaskId = (tasks = []) => {
 const getDashboard = async () => dao.getDashboardStats();
 const getUsersProgress = async () => dao.getPerUserProgress();
 
+// ─── Backup & cleanup ────────────────────────────────────────────────────────
+const backupLock = require("./backupLock");
+
+// Drives the dashboard's Backup & Cleanup card: the last backup/cleanup stamps,
+// whether a cleanup is allowed right now, and how much a cleanup would remove.
+const getBackupStatus = async () => {
+  const state = await dao.getBackupState();
+  const pending = await dao.getFinishedSetSummary(new Date());
+  const canCleanup =
+    !!state.lastBackupAt &&
+    !state.lastBackupHadErrors &&
+    (!state.lastCleanupAt || new Date(state.lastBackupAt) > new Date(state.lastCleanupAt));
+  return {
+    lastBackupAt: state.lastBackupAt || null,
+    lastBackupHadErrors: !!state.lastBackupHadErrors,
+    lastBackupStats: state.lastBackupStats || null,
+    lastCleanupAt: state.lastCleanupAt || null,
+    lastCleanupStats: state.lastCleanupStats || null,
+    inProgress: backupLock.current(),
+    canCleanup,
+    pending,
+  };
+};
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 // `deleted` may be "1"/"true"/"all"/undefined - filters the listing.
 const getAllUsers = async ({ deleted } = {}) => {
@@ -313,6 +337,18 @@ const deleteTaskSubmission = async (submissionId) => {
   return deleted;
 };
 
+// Best-effort Cloudinary cleanup for cascade deletes. Never blocks or fails
+// the DB delete - a leftover audio file is cheaper than a half-deleted record.
+const purgeAudio = async (publicIds = []) => {
+  if (!publicIds || !publicIds.length) return;
+  try {
+    const { deleteAudioBulk } = require("../../../services/cloudinary.service");
+    await deleteAudioBulk(publicIds);
+  } catch (err) {
+    logger.warn(`Cloudinary cleanup skipped for ${publicIds.length} file(s): ${err.message}`);
+  }
+};
+
 // ─── Projects ─────────────────────────────────────────────────────────────────
 const createProject = async ({ name, description, adminId }) => {
   const project = await dao.createProject({ name, description, createdBy: adminId });
@@ -348,13 +384,14 @@ const updateProject = async (id, data) => {
 };
 
 const deleteProject = async (id) => {
-  const project = await dao.deleteProject(id);
+  const { project, audioPublicIds } = await dao.deleteProject(id);
   if (!project) {
     const err = new Error("Project not found.");
     err.statusCode = 404;
     throw err;
   }
-  logger.info(`Project deleted: ${id}`);
+  await purgeAudio(audioPublicIds);
+  logger.info(`Project hard-deleted: ${id} (${audioPublicIds.length} audio file(s) purged)`);
   return project;
 };
 
@@ -407,15 +444,14 @@ const updateTask = async (id, data) => {
 };
 
 const deleteTask = async (id) => {
-  const task = await dao.getTaskById(id);
+  const { task, audioPublicIds } = await dao.deleteTask(id);
   if (!task) {
     const err = new Error("Task not found.");
     err.statusCode = 404;
     throw err;
   }
-  await dao.removeTaskFromProject(task.projectId, id);
-  await dao.deleteTask(id);
-  logger.info(`Task deleted: ${id}`);
+  await purgeAudio(audioPublicIds);
+  logger.info(`Task hard-deleted: ${id} (${audioPublicIds.length} audio file(s) purged)`);
   return task;
 };
 
@@ -431,8 +467,9 @@ const deleteTasksBulk = async (projectId, ids = []) => {
     err.statusCode = 404;
     throw err;
   }
-  const { deletedCount } = await dao.deleteTasksBulk(projectId, ids);
-  logger.info(`Bulk delete on project ${projectId}: removed ${deletedCount}/${ids.length} tasks`);
+  const { deletedCount, audioPublicIds } = await dao.deleteTasksBulk(projectId, ids);
+  await purgeAudio(audioPublicIds);
+  logger.info(`Bulk delete on project ${projectId}: removed ${deletedCount}/${ids.length} tasks (${audioPublicIds.length} audio file(s) purged)`);
   return { deletedCount, requestedCount: ids.length };
 };
 
@@ -726,6 +763,7 @@ const prepareStreamingExport = async ({ projectId, userId } = {}) => {
 module.exports = {
   getDashboard,
   getUsersProgress,
+  getBackupStatus,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
   deleteUser, bulkDeleteUsers,
   getUserSubmissions,

@@ -1,5 +1,7 @@
 const path = require("path");
 const svc = require("../services/admin.service");
+const backupSvc = require("../services/backup.service");
+const cleanupSvc = require("../services/cleanup.service");
 const { successResponse, errorResponse, notFoundResponse } = require("../../../responses/apiResponse");
 const logger = require("../../../logging/logger");
 
@@ -16,6 +18,41 @@ const getUsersProgress = async (req, res, next) => {
     const progress = await svc.getUsersProgress();
     return successResponse(res, "User progress retrieved.", progress);
   } catch (err) { next(err); }
+};
+
+// ─── Backup & cleanup ────────────────────────────────────────────────────────
+const getBackupStatus = async (req, res, next) => {
+  try {
+    const status = await svc.getBackupStatus();
+    return successResponse(res, "Backup status retrieved.", status);
+  } catch (err) { next(err); }
+};
+
+// Streams the .zip straight to the client. Once headers are out we can't send a
+// JSON error, so failures after that point just close the socket.
+const downloadBackup = async (req, res, next) => {
+  try {
+    await backupSvc.runBackup(res);
+  } catch (err) {
+    if (!res.headersSent) {
+      return errorResponse(res, err.message, err.statusCode || 500);
+    }
+    logger.error(`Backup download aborted: ${err.message}`);
+    if (!res.writableEnded) res.end();
+  }
+};
+
+const runCleanup = async (req, res, next) => {
+  try {
+    if (req.body?.confirm !== "CLEANUP") {
+      return errorResponse(res, 'Type "CLEANUP" to confirm the wipe.', 400);
+    }
+    const stats = await cleanupSvc.runCleanup();
+    return successResponse(res, "Cleanup complete. Progress has been retained.", stats);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
 };
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -373,6 +410,9 @@ const exportUserResults = async (req, res, next) => {
 module.exports = {
   getDashboard,
   getUsersProgress,
+  getBackupStatus,
+  downloadBackup,
+  runCleanup,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
   deleteUser, bulkDeleteUsers,
   getUserSubmissions,

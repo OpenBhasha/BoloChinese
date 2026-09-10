@@ -62,6 +62,25 @@ const deleteAudio = async (publicId) => {
   logger.info(`Audio deleted from Cloudinary | publicId: ${publicId}`);
 };
 
+// Bulk variant for cascade deletes (a project or task taking its submissions
+// down with it). delete_resources caps at 100 ids per call, so we page.
+const deleteAudioBulk = async (publicIds = []) => {
+  const ids = [...new Set(publicIds.filter(Boolean))];
+  if (!ids.length) return;
+  assertConfigured();
+
+  for (let i = 0; i < ids.length; i += 100) {
+    const batch = ids.slice(i, i + 100);
+    // eslint-disable-next-line no-await-in-loop
+    await cloudinary.api.delete_resources(batch, {
+      resource_type: "video",
+      invalidate: true,
+    });
+  }
+
+  logger.info(`Audio deleted from Cloudinary | ${ids.length} file(s)`);
+};
+
 const getAudioStream = async (audioUrl) => {
   if (!audioUrl) {
     const err = new Error("Audio URL is required.");
@@ -83,4 +102,4 @@ const getAudioStream = async (audioUrl) => {
   });
 };
 
-module.exports = { uploadAudio, deleteAudio, getAudioStream };
+module.exports = { uploadAudio, deleteAudio, deleteAudioBulk, getAudioStream };

@@ -4,6 +4,11 @@ import api from "./axios";
 export const getDashboard = () => api.get("/admin/dashboard");
 export const getUsersProgress = () => api.get("/admin/users/progress");
 
+// Backup & cleanup
+export const getBackupStatus = () => api.get("/admin/backup/status");
+export const downloadBackup = () => api.get("/admin/backup", { responseType: "blob" });
+export const runCleanup = () => api.post("/admin/cleanup", { confirm: "CLEANUP" });
+
 // Users
 // deleted: undefined (default = active only), true (deleted only), "all" (both)
 export const getAllUsers = (opts = {}) => {

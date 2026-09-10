@@ -43,6 +43,7 @@ export default function AdminUsers() {
   const [usersProgress, setUsersProgress] = useState([]);
   const [progressLoading, setProgressLoading] = useState(true);
   const [progressSearch, setProgressSearch] = useState("");
+  const [progressView, setProgressView] = useState("lifetime"); // "lifetime" | "today"
   const [progressPage, setProgressPage] = useState(1);
   const [userScope, setUserScope] = useState("active"); // "active" | "deleted"
   const [selectedUserIds, setSelectedUserIds] = useState(() => new Set());
@@ -553,11 +554,29 @@ export default function AdminUsers() {
       )}
 
       <h2 className="text-lg font-bold text-primary-900 mt-10 mb-1">User Progress</h2>
-      <p className="text-primary-400 text-sm mb-4">Assigned, validated, edited, and discarded items per user</p>
+      <p className="text-primary-400 text-sm mb-4">
+        {progressView === "today"
+          ? "Today's validated, edited, discarded and recorded items per user (Asia/Kolkata)."
+          : "Lifetime totals per user — kept across the nightly cleanup."}
+      </p>
 
       {progressLoading ? <PageSpinner /> : (
         <div className="admin-datatable card p-0 overflow-hidden">
-          <div className="p-4 flex justify-end border-b border-primary-100">
+          <div className="p-4 flex justify-between items-center gap-3 border-b border-primary-100 flex-wrap">
+            <div className="inline-flex rounded-lg border border-primary-200 overflow-hidden text-sm">
+              {["lifetime", "today"].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setProgressView(v)}
+                  className={`px-3 py-1.5 capitalize transition ${
+                    progressView === v ? "bg-primary-700 text-white" : "bg-white text-primary-500 hover:bg-primary-50"
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
             <input
               type="text"
               value={progressSearch}
@@ -568,24 +587,27 @@ export default function AdminUsers() {
           </div>
 
           <div className="sm:hidden divide-y divide-surface-border">
-            {paginatedProgress.map((u) => (
+            {paginatedProgress.map((u) => {
+              const p = (progressView === "today" ? u.today : u.lifetime) || u;
+              return (
               <Link key={u._id} to={`/admin/users/${u._id}/profile`} className="block p-4 space-y-2 hover:bg-primary-50/40">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium text-primary-900 truncate">{u.name}</p>
                   <ChevronRight size={16} className="text-primary-300 shrink-0" />
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-primary-500">
-                  <span>Assigned: {u.assigned}</span>
-                  <span>Validated: {u.validated ?? 0}</span>
-                  <span>Edited: {u.edited ?? u.corrected ?? 0}</span>
-                  <span>Discarded: {u.discarded ?? 0}</span>
-                  <span>Recorded: {u.recorded ?? 0}</span>
-                  <span>Pending: {u.pending}</span>
-                  <span>Audio: {formatDuration(u.audioDurationSeconds)}</span>
-                  <span className="font-semibold text-primary-900">{u.progressPercent}%</span>
+                  <span>Assigned: {p.assigned}</span>
+                  <span>Validated: {p.validated ?? 0}</span>
+                  <span>Edited: {p.edited ?? p.corrected ?? 0}</span>
+                  <span>Discarded: {p.discarded ?? 0}</span>
+                  <span>Recorded: {p.recorded ?? 0}</span>
+                  <span>Pending: {p.pending}</span>
+                  <span>Audio: {formatDuration(p.audioDurationSeconds)}</span>
+                  <span className="font-semibold text-primary-900">{p.progressPercent}%</span>
                 </div>
               </Link>
-            ))}
+              );
+            })}
             {!paginatedProgress.length && (
               <div className="px-5 py-10 text-center text-slate-500">No users found.</div>
             )}
@@ -601,7 +623,9 @@ export default function AdminUsers() {
                 </tr>
               </thead>
               <tbody>
-                {paginatedProgress.map((u) => (
+                {paginatedProgress.map((u) => {
+                  const p = (progressView === "today" ? u.today : u.lifetime) || u;
+                  return (
                   <tr key={u._id} className="border-b border-primary-100 hover:bg-primary-50/40 transition">
                     <td className="px-5 py-4 font-medium text-primary-900 whitespace-nowrap">
                       <div className="flex items-center gap-2">
@@ -611,14 +635,14 @@ export default function AdminUsers() {
                         )}
                       </div>
                     </td>
-                    <td className="px-5 py-4 text-primary-500">{u.assigned}</td>
-                    <td className="px-5 py-4 text-primary-500">{u.validated ?? 0}</td>
-                    <td className="px-5 py-4 text-primary-500">{u.edited ?? u.corrected ?? 0}</td>
-                    <td className="px-5 py-4 text-primary-500">{u.discarded ?? 0}</td>
-                    <td className="px-5 py-4 text-primary-500">{u.recorded ?? 0}</td>
-                    <td className="px-5 py-4 text-primary-500">{u.pending}</td>
-                    <td className="px-5 py-4 text-primary-500 whitespace-nowrap">{formatDuration(u.audioDurationSeconds)}</td>
-                    <td className="px-5 py-4 font-semibold text-primary-900">{u.progressPercent}%</td>
+                    <td className="px-5 py-4 text-primary-500">{p.assigned}</td>
+                    <td className="px-5 py-4 text-primary-500">{p.validated ?? 0}</td>
+                    <td className="px-5 py-4 text-primary-500">{p.edited ?? p.corrected ?? 0}</td>
+                    <td className="px-5 py-4 text-primary-500">{p.discarded ?? 0}</td>
+                    <td className="px-5 py-4 text-primary-500">{p.recorded ?? 0}</td>
+                    <td className="px-5 py-4 text-primary-500">{p.pending}</td>
+                    <td className="px-5 py-4 text-primary-500 whitespace-nowrap">{formatDuration(p.audioDurationSeconds)}</td>
+                    <td className="px-5 py-4 font-semibold text-primary-900">{p.progressPercent}%</td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <Link to={`/admin/users/${u._id}/profile`} className="text-xs font-semibold text-primary-700 hover:text-primary-900 inline-flex items-center gap-1">
@@ -630,7 +654,8 @@ export default function AdminUsers() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {!paginatedProgress.length && (
                   <tr><td colSpan={10} className="px-5 py-10 text-center text-slate-500">No users found.</td></tr>
                 )}

@@ -3,6 +3,24 @@ const Project = require("../models/project.model");
 const Task = require("../models/task.model");
 const ProjectAssignment = require("../models/projectAssignment.model");
 const TaskSubmission = require("../models/taskSubmission.model");
+const UserProgress = require("../models/userProgress.model");
+const BackupState = require("../models/backupState.model");
+const { kolkataDate } = require("../../../services/datetime");
+
+// A task submission is "finished" once the annotator is done with it - audio
+// uploaded (completed) or explicitly set aside (discarded). Everything else is
+// still in flight and survives the nightly cleanup.
+const TERMINAL_STATUSES = ["completed", "discarded"];
+
+// Fields the progress ledger accumulates and every progress read sums back up.
+const PROGRESS_FIELDS = [
+  "assigned", "submitted", "completed", "discarded",
+  "edited", "validated", "recorded", "audioDurationSeconds", "timeSpentMs",
+];
+
+const zeroProgress = () => Object.fromEntries(PROGRESS_FIELDS.map((f) => [f, 0]));
+const addProgress = (a = {}, b = {}) =>
+  Object.fromEntries(PROGRESS_FIELDS.map((f) => [f, (a[f] || 0) + (b[f] || 0)]));
 
 const getTaskSequence = (taskId = "") => {
   const match = String(taskId).match(/^TASK-(\d+)$/i);
@@ -102,8 +120,28 @@ const updateProject = async (id, data) => {
   return Project.findByIdAndUpdate(id, data, { new: true, runValidators: true });
 };
 
+// Hard delete. The project doc AND everything scoped to it goes: every task,
+// every annotator's submission, the assignment rows, and the `dedicatedProjectId`
+// pointer on any user. Nothing is left dangling. Returns the deleted project
+// (or null) plus the Cloudinary audio publicIds the caller should purge.
 const deleteProject = async (id) => {
-  return Project.findByIdAndDelete(id);
+  const project = await Project.findById(id);
+  if (!project) return { project: null, audioPublicIds: [] };
+
+  const audioPublicIds = await TaskSubmission.find({
+    projectId: id,
+    "audio.publicId": { $ne: null },
+  }).distinct("audio.publicId");
+
+  await Promise.all([
+    Task.deleteMany({ projectId: id }),
+    TaskSubmission.deleteMany({ projectId: id }),
+    ProjectAssignment.deleteMany({ projectId: id }),
+    User.updateMany({ dedicatedProjectId: id }, { $set: { dedicatedProjectId: null } }),
+  ]);
+
+  await Project.findByIdAndDelete(id);
+  return { project, audioPublicIds };
 };
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
@@ -208,24 +246,38 @@ const updateTask = async (id, data) => {
     .populate("assignedTo", "name email");
 };
 
+// Hard delete. Strips the id off the project's `tasks` array and drops every
+// related submission so nothing dangles. Returns the deleted task (or null)
+// plus the Cloudinary audio publicIds the caller should purge.
 const deleteTask = async (id) => {
-  return Task.findByIdAndDelete(id);
+  const task = await Task.findById(id);
+  if (!task) return { task: null, audioPublicIds: [] };
+
+  const audioPublicIds = await TaskSubmission.find({
+    taskId: id,
+    "audio.publicId": { $ne: null },
+  }).distinct("audio.publicId");
+
+  await Project.findByIdAndUpdate(task.projectId, { $pull: { tasks: id } });
+  await TaskSubmission.deleteMany({ taskId: id });
+  await Task.findByIdAndDelete(id);
+  return { task, audioPublicIds };
 };
 
 // Bulk-delete tasks scoped to a single project. Also strips their ids off
 // the project's `tasks` array and drops every related submission so nothing
-// dangles.
+// dangles. Returns the audio publicIds to purge alongside deletedCount.
 const deleteTasksBulk = async (projectId, ids = []) => {
-  if (!ids.length) return { deletedCount: 0 };
+  if (!ids.length) return { deletedCount: 0, audioPublicIds: [] };
   const objectIds = ids;
+  const audioPublicIds = await TaskSubmission.find({
+    taskId: { $in: objectIds },
+    "audio.publicId": { $ne: null },
+  }).distinct("audio.publicId");
   const result = await Task.deleteMany({ _id: { $in: objectIds }, projectId });
   await Project.findByIdAndUpdate(projectId, { $pull: { tasks: { $in: objectIds } } });
   await TaskSubmission.deleteMany({ taskId: { $in: objectIds } });
-  return { deletedCount: result.deletedCount || 0 };
-};
-
-const removeTaskFromProject = async (projectId, taskId) => {
-  return Project.findByIdAndUpdate(projectId, { $pull: { tasks: taskId } }, { new: true });
+  return { deletedCount: result.deletedCount || 0, audioPublicIds };
 };
 
 const assignProjectToUser = async (projectId, userId, adminId) => {
@@ -295,7 +347,88 @@ const getAssignedProjectIdsByUser = async (userId) => {
   return assignments.map((a) => a.projectId.toString());
 };
 
-// Per-user rollup for the admin dashboard's user progress table.
+// ─── Progress ledger ─────────────────────────────────────────────────────────
+// Progress = permanent ledger rows (written by the nightly cleanup, never
+// deleted) + whatever is still live in TaskSubmission (this batch's work).
+// "lifetime" sums every ledger row; "today" takes only the Kolkata-dated row.
+
+// Live rollup straight off TaskSubmission, grouped by user. Same shape as a
+// ledger row so the two just add together.
+const getLiveProgressByUser = async (userIds) => {
+  const match = userIds ? { userId: { $in: userIds } } : {};
+  const rows = await TaskSubmission.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: "$userId",
+        submitted: { $sum: 1 },
+        validated: { $sum: { $cond: [{ $eq: ["$pinyinVerified", true] }, 1, 0] } },
+        edited: { $sum: { $cond: [{ $eq: ["$isCorrected", true] }, 1, 0] } },
+        discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
+        recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
+        completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
+        audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
+        timeSpentMs: { $sum: { $ifNull: ["$timeSpentMs", 0] } },
+      },
+    },
+  ]);
+  return new Map(rows.map((r) => [r._id.toString(), r]));
+};
+
+// Ledger rows summed per user. Pass a `date` to restrict to that Kolkata day.
+const getLedgerByUser = async (userIds, date) => {
+  const match = {};
+  if (userIds) match.userId = { $in: userIds };
+  if (date) match.date = date;
+  const group = { _id: "$userId" };
+  PROGRESS_FIELDS.forEach((f) => { group[f] = { $sum: `$${f}` }; });
+  const rows = await UserProgress.aggregate([{ $match: match }, { $group: group }]);
+  return new Map(rows.map((r) => [r._id.toString(), r]));
+};
+
+// Whole-ledger grand totals (optionally for one Kolkata day) for the dashboard.
+const getLedgerGrandTotals = async (date) => {
+  const pipeline = [];
+  if (date) pipeline.push({ $match: { date } });
+  const group = { _id: null };
+  PROGRESS_FIELDS.forEach((f) => { group[f] = { $sum: `$${f}` }; });
+  pipeline.push({ $group: group });
+  const [row] = await UserProgress.aggregate(pipeline);
+  const out = zeroProgress();
+  if (row) PROGRESS_FIELDS.forEach((f) => { out[f] = row[f] || 0; });
+  return out;
+};
+
+// Every ledger row for one user, newest day first - powers the per-user
+// progress.csv daily history in a backup.
+const getLedgerRowsForUser = async (userId) =>
+  UserProgress.find({ userId }).sort({ date: -1 }).lean();
+
+const shapeProgress = (s) => {
+  const assigned = s.assigned || 0;
+  const submitted = s.submitted || 0;
+  const completed = s.completed || 0;
+  const discarded = s.discarded || 0;
+  const edited = s.edited || 0;
+  return {
+    assigned,
+    submitted,
+    completed,
+    edited,
+    corrected: edited, // legacy alias
+    validated: s.validated || 0,
+    discarded,
+    recorded: s.recorded || 0,
+    audioDurationSeconds: Math.round(s.audioDurationSeconds || 0),
+    timeSpentMs: Math.round(s.timeSpentMs || 0),
+    pending: Math.max(0, assigned - submitted),
+    progressPercent: assigned ? Math.round(((completed + discarded) / assigned) * 100) : 0,
+  };
+};
+
+// Per-user rollup for the admin dashboard's user progress table. Each row
+// carries `today` and `lifetime` blocks; the top-level keys mirror `lifetime`
+// so existing table columns keep working.
 const getPerUserProgress = async () => {
   // Only ACTIVE (non-soft-deleted) annotators appear in progress analytics.
   const users = await User.find({ role: "user", deletedAt: null })
@@ -304,23 +437,13 @@ const getPerUserProgress = async () => {
   if (!users.length) return [];
 
   const activeUserIds = users.map((u) => u._id);
-  const [assignments, rollup] = await Promise.all([
+  const today = kolkataDate();
+
+  const [assignments, liveByUser, ledgerAllByUser, ledgerTodayByUser] = await Promise.all([
     ProjectAssignment.find({ userId: { $in: activeUserIds } }).select("userId projectId").lean(),
-    TaskSubmission.aggregate([
-      { $match: { userId: { $in: activeUserIds } } },
-      {
-        $group: {
-          _id: "$userId",
-          submitted: { $sum: 1 },
-          validated: { $sum: { $cond: [{ $eq: ["$pinyinVerified", true] }, 1, 0] } },
-          edited: { $sum: { $cond: [{ $eq: ["$isCorrected", true] }, 1, 0] } },
-          discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
-          recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
-          completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
-          audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
-        },
-      },
-    ]),
+    getLiveProgressByUser(activeUserIds),
+    getLedgerByUser(activeUserIds),
+    getLedgerByUser(activeUserIds, today),
   ]);
 
   const projectIdsByUser = new Map();
@@ -330,26 +453,17 @@ const getPerUserProgress = async () => {
     projectIdsByUser.get(key).push(a.projectId);
   });
 
-  const rollupByUser = new Map(rollup.map((row) => [row._id.toString(), row]));
-
   return Promise.all(
     users.map(async (u) => {
       const key = u._id.toString();
       const projectIds = projectIdsByUser.get(key) || [];
-      const assigned = projectIds.length ? await Task.countDocuments({ projectId: { $in: projectIds } }) : 0;
-
-      const r = rollupByUser.get(key) || {};
-      const completed = r.completed || 0;
-      const edited = r.edited || 0;
-      const validated = r.validated || 0;
-      const discarded = r.discarded || 0;
-      const recorded = r.recorded || 0;
-      const audioDurationSeconds = Math.round(r.audioDurationSeconds || 0);
-      const submitted = r.submitted || 0;
-      const pending = Math.max(0, assigned - submitted);
-      const progressPercent = assigned
-        ? Math.round(((completed + discarded) / assigned) * 100)
+      const liveAssigned = projectIds.length
+        ? await Task.countDocuments({ projectId: { $in: projectIds } })
         : 0;
+
+      const live = { ...zeroProgress(), ...(liveByUser.get(key) || {}), assigned: liveAssigned };
+      const lifetime = shapeProgress(addProgress(ledgerAllByUser.get(key), live));
+      const todayStats = shapeProgress(addProgress(ledgerTodayByUser.get(key), live));
 
       return {
         _id: u._id,
@@ -360,20 +474,166 @@ const getPerUserProgress = async () => {
         isVerified: u.isVerified,
         identityFlagged: u.identityFlagged,
         identityFlagReason: u.identityFlagReason,
-        assigned,
-        completed,
-        // `corrected` kept as an alias of `edited` for backward compatibility.
-        corrected: edited,
-        edited,
-        validated,
-        discarded,
-        recorded,
-        audioDurationSeconds,
-        pending,
-        progressPercent,
+        ...lifetime, // back-compat: top-level == lifetime
+        lifetime,
+        today: todayStats,
       };
     })
   );
+};
+
+// ─── Finished-set + backup/cleanup ───────────────────────────────────────────
+
+// Task ids that are fully finished as of `cutoff`: at least one submission,
+// every submission terminal (completed/discarded), and none touched after the
+// cutoff. This is exactly what a backup exports and a cleanup deletes.
+const getFinishedTaskIds = async (cutoff) => {
+  const rows = await TaskSubmission.aggregate([
+    {
+      $group: {
+        _id: "$taskId",
+        total: { $sum: 1 },
+        terminal: { $sum: { $cond: [{ $in: ["$status", TERMINAL_STATUSES] }, 1, 0] } },
+        maxUpdatedAt: { $max: "$updatedAt" },
+      },
+    },
+    {
+      $match: {
+        $expr: {
+          $and: [
+            { $gt: ["$total", 0] },
+            { $eq: ["$total", "$terminal"] },
+            { $lte: ["$maxUpdatedAt", cutoff] },
+          ],
+        },
+      },
+    },
+    { $project: { _id: 1 } },
+  ]);
+  return rows.map((r) => r._id);
+};
+
+// Everything the zip builder needs for a backup of the finished set as of
+// `cutoff`. Users/projects/assignments are included whole for the mapping
+// files; tasks and submissions are scoped to the finished set.
+const getBackupDataset = async (cutoff) => {
+  const finishedTaskIds = await getFinishedTaskIds(cutoff);
+  const [tasks, submissions, projects, users, assignments] = await Promise.all([
+    Task.find({ _id: { $in: finishedTaskIds } }).lean(),
+    TaskSubmission.find({ taskId: { $in: finishedTaskIds } }).lean(),
+    Project.find({}).select("name description createdBy createdAt").populate("createdBy", "name email").lean(),
+    User.find({})
+      .select("name email username phone role isVerified identityFlagged identityFlagReason dedicatedProjectId createdAt deletedAt")
+      .lean(),
+    ProjectAssignment.find({}).select("projectId userId").lean(),
+  ]);
+  return { cutoff, finishedTaskIds, tasks, submissions, projects, users, assignments };
+};
+
+// Snapshot the finished set into the ledger, then hard-delete it. `cutoff` must
+// be the timestamp of the backup the admin just took; `date` is the Kolkata day
+// the ledger rows are filed under. Returns a summary + the audio publicIds the
+// caller must purge from Cloudinary.
+const runCleanupDeletion = async ({ cutoff, date }) => {
+  const finishedTaskIds = await getFinishedTaskIds(cutoff);
+  if (!finishedTaskIds.length) {
+    return { date, tasksDeleted: 0, submissionsDeleted: 0, usersSnapshotted: 0, audioPublicIds: [] };
+  }
+
+  const submissions = await TaskSubmission.find({ taskId: { $in: finishedTaskIds } })
+    .select("taskId userId status pinyinVerified isCorrected audio.url audio.publicId audio.durationSeconds timeSpentMs")
+    .lean();
+
+  const perUser = new Map();
+  for (const s of submissions) {
+    const key = s.userId.toString();
+    const acc = perUser.get(key) || { userId: s.userId, ...zeroProgress() };
+    acc.assigned += 1;
+    acc.submitted += 1;
+    if (s.status === "completed") acc.completed += 1;
+    if (s.status === "discarded") acc.discarded += 1;
+    if (s.isCorrected) acc.edited += 1;
+    if (s.pinyinVerified === true) acc.validated += 1;
+    if (s.audio && s.audio.url) acc.recorded += 1;
+    acc.audioDurationSeconds += Number(s.audio?.durationSeconds || 0);
+    acc.timeSpentMs += Number(s.timeSpentMs || 0);
+    perUser.set(key, acc);
+  }
+
+  // $inc so a second cleanup on the same Kolkata day accumulates.
+  await Promise.all(
+    [...perUser.values()].map((acc) =>
+      UserProgress.updateOne(
+        { userId: acc.userId, date },
+        {
+          $inc: {
+            assigned: acc.assigned,
+            submitted: acc.submitted,
+            completed: acc.completed,
+            discarded: acc.discarded,
+            edited: acc.edited,
+            validated: acc.validated,
+            recorded: acc.recorded,
+            audioDurationSeconds: Math.round(acc.audioDurationSeconds),
+            timeSpentMs: Math.round(acc.timeSpentMs),
+            tasksDeleted: acc.assigned,
+            audioFilesDeleted: acc.recorded,
+          },
+        },
+        { upsert: true }
+      )
+    )
+  );
+
+  const audioPublicIds = submissions.map((s) => s.audio?.publicId).filter(Boolean);
+
+  const subDel = await TaskSubmission.deleteMany({ taskId: { $in: finishedTaskIds } });
+  await Task.deleteMany({ _id: { $in: finishedTaskIds } });
+  await Project.updateMany(
+    { tasks: { $in: finishedTaskIds } },
+    { $pull: { tasks: { $in: finishedTaskIds } } }
+  );
+
+  return {
+    date,
+    tasksDeleted: finishedTaskIds.length,
+    submissionsDeleted: subDel.deletedCount || 0,
+    usersSnapshotted: perUser.size,
+    audioPublicIds,
+  };
+};
+
+// ─── Backup <-> cleanup handshake state (singleton) ──────────────────────────
+const getBackupState = async () =>
+  BackupState.findByIdAndUpdate(
+    "singleton",
+    { $setOnInsert: { _id: "singleton" } },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  ).lean();
+
+const setBackupCompleted = async ({ cutoff, stats, hadErrors }) =>
+  BackupState.findByIdAndUpdate(
+    "singleton",
+    { $set: { lastBackupAt: cutoff, lastBackupHadErrors: !!hadErrors, lastBackupStats: stats || null } },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  ).lean();
+
+const setCleanupCompleted = async ({ stats }) =>
+  BackupState.findByIdAndUpdate(
+    "singleton",
+    { $set: { lastCleanupAt: new Date(), lastCleanupStats: stats || null } },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  ).lean();
+
+// Lightweight counts for the dashboard card (what a cleanup would remove now).
+const getFinishedSetSummary = async (cutoff) => {
+  const finishedTaskIds = await getFinishedTaskIds(cutoff);
+  if (!finishedTaskIds.length) return { finishedTasks: 0, finishedSubmissions: 0, audioFiles: 0 };
+  const [finishedSubmissions, audioFiles] = await Promise.all([
+    TaskSubmission.countDocuments({ taskId: { $in: finishedTaskIds } }),
+    TaskSubmission.countDocuments({ taskId: { $in: finishedTaskIds }, "audio.publicId": { $ne: null } }),
+  ]);
+  return { finishedTasks: finishedTaskIds.length, finishedSubmissions, audioFiles };
 };
 
 const getUserSubmissions = async (userId) => {
@@ -439,9 +699,9 @@ const getDashboardStats = async () => {
   const activeUsers = await User.find({ deletedAt: null }).select("_id isVerified identityFlagged").lean();
   const activeUserIds = activeUsers.map((u) => u._id);
 
-  // Projects are hard-deleted; their tasks and submissions are orphaned rather
-  // than cascaded. Narrow every task/submission stat to projects that still
-  // exist so a wiped project doesn't inflate the dashboard.
+  // Deleting a project now cascades to its tasks and submissions, so this
+  // scoping is just a safety net for any legacy orphans left by an earlier
+  // non-cascading delete.
   const activeProjectIds = await Project.find({}).distinct("_id");
 
   const submissionMatch = {
@@ -449,7 +709,8 @@ const getDashboardStats = async () => {
     projectId: { $in: activeProjectIds },
   };
 
-  const [totalProjects, totalTasks, submissionsByStatus, metrics] = await Promise.all([
+  const today = kolkataDate();
+  const [totalProjects, totalTasks, submissionsByStatus, metrics, ledgerAll, ledgerToday] = await Promise.all([
     Project.countDocuments(),
     Task.countDocuments({ projectId: { $in: activeProjectIds } }),
     TaskSubmission.aggregate([
@@ -491,6 +752,8 @@ const getDashboardStats = async () => {
         },
       },
     ]),
+    getLedgerGrandTotals(),
+    getLedgerGrandTotals(today),
   ]);
 
   const totalUsers = activeUsers.length;
@@ -508,24 +771,46 @@ const getDashboardStats = async () => {
 
   const m = metrics[0] || {};
 
+  // Live = this batch's work still in TaskSubmission. Lifetime = live + every
+  // wiped batch recorded in the progress ledger. Today = live + only the
+  // Kolkata-dated ledger row. Counts never regress across a nightly cleanup;
+  // `total` / `pending` / the averages stay live because they describe the
+  // current working set.
+  const live = {
+    completed,
+    edited: m.edited || 0,
+    validated: m.validated || 0,
+    discarded: m.discarded || 0,
+    recorded: m.recorded || 0,
+    audioDurationSeconds: Math.round(m.audioDurationSeconds || 0),
+  };
+  const rollup = (led) => ({
+    completed: live.completed + (led.completed || 0),
+    edited: live.edited + (led.edited || 0),
+    validated: live.validated + (led.validated || 0),
+    discarded: live.discarded + (led.discarded || 0),
+    recorded: live.recorded + (led.recorded || 0),
+    audioDurationSeconds: live.audioDurationSeconds + Math.round(led.audioDurationSeconds || 0),
+  });
+  const lifetime = rollup(ledgerAll);
+
   return {
     users: { total: totalUsers, pending: pendingUsers, verified: totalUsers - pendingUsers, flaggedIdentities },
     projects: { total: totalProjects },
     tasks: {
       total: totalTasks,
-      completed,
-      corrected,
-      validated: m.validated || 0,
-      edited: m.edited || 0,
-      discarded: m.discarded || 0,
-      recorded: m.recorded || 0,
-      audioDurationSeconds: Math.round(m.audioDurationSeconds || 0),
+      // Top-level == lifetime so the dashboard tiles never drop after a cleanup.
+      ...lifetime,
+      corrected: lifetime.edited,
       avgAudioDurationSeconds: Math.round((m.avgAudioDurationSeconds || 0) * 10) / 10,
       avgTimePerTaskMs: Math.round(m.avgTimePerTaskMs || 0),
       // Rough site-wide indicator only: distinct tasks vs. total per-user submission
       // records can diverge when a project has more than one assigned user. The
       // accurate per-user breakdown lives in getPerUserProgress().
       pending: Math.max(0, totalTasks - submitted),
+      live,
+      today: rollup(ledgerToday),
+      lifetime,
     },
   };
 };
@@ -535,7 +820,7 @@ module.exports = {
   softDeleteUser, softDeleteUsersBulk,
   getUserById, getUserByEmail,
   createProject, getAllProjects, getProjectById, getProjectByName, updateProject, deleteProject,
-  createTask, addTaskToProject, addTasksToProject, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk, removeTaskFromProject,
+  createTask, addTaskToProject, addTasksToProject, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
   getExistingDialogueIds, bulkCreateTasks,
   assignProjectToUser,
   unassignProjectFromUser,
@@ -550,4 +835,14 @@ module.exports = {
   getDashboardStats,
   getPerUserProgress,
   getUserSubmissions,
+  // progress ledger + backup/cleanup
+  getLiveProgressByUser,
+  getLedgerRowsForUser,
+  getFinishedTaskIds,
+  getBackupDataset,
+  runCleanupDeletion,
+  getBackupState,
+  setBackupCompleted,
+  setCleanupCompleted,
+  getFinishedSetSummary,
 };

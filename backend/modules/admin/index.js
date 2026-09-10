@@ -20,6 +20,19 @@ router.use(authenticate, requireRole("admin"));
 router.get("/dashboard", ctrl.getDashboard);
 router.get("/users/progress", ctrl.getUsersProgress);
 
+// ─── Backup & cleanup ────────────────────────────────────────────────────────
+// GET  /backup         - streams a .zip of the finished set (completed/discarded
+//                        tasks + audio + progress). Stamps lastBackupAt on a
+//                        clean delivery.
+// GET  /backup/status  - card state: last backup/cleanup, whether cleanup is
+//                        allowed, and how much it would remove.
+// POST /cleanup        - snapshots finished work into the permanent progress
+//                        ledger, then hard-deletes those tasks + audio. Refuses
+//                        unless there is a fresh, error-free backup.
+router.get("/backup", ctrl.downloadBackup);
+router.get("/backup/status", ctrl.getBackupStatus);
+router.post("/cleanup", ctrl.runCleanup);
+
 // ─── Result export (partial results, no completion gate) ─────────────────────
 router.get("/export", ctrl.exportResults);
 router.get("/projects/:projectId/export", [validateObjectId("projectId"), validate], ctrl.exportProjectResults);

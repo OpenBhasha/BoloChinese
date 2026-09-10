@@ -135,7 +135,8 @@ export default function UserDetail() {
         <StatCard label="Completed" value={progress.completed} icon={CheckCircle2} color="emerald" />
         <StatCard label="Pending" value={progress.pending} icon={Clock3} color="amber" />
         <StatCard label="Audio Duration" value={formatDuration(progress.audioDurationSeconds)} icon={Timer} color="primary" />
-        <StatCard label="Progress" value={`${progress.progressPercent}%`} icon={Percent} color="primary" />
+        <StatCard label="Progress (lifetime)" value={`${progress.progressPercent}%`} icon={Percent} color="primary" />
+        <StatCard label="Progress (today)" value={`${progress.today?.progressPercent ?? 0}%`} icon={Percent} color="blue" />
       </div>
 
       <div className="admin-datatable card p-0 overflow-hidden">
