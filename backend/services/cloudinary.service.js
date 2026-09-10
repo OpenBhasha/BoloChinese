@@ -81,6 +81,37 @@ const deleteAudioBulk = async (publicIds = []) => {
   logger.info(`Audio deleted from Cloudinary | ${ids.length} file(s)`);
 };
 
+// Full sweep of every uploaded audio under the bolo/audio/ prefix. Used by the
+// admin database reset. Mirrors backend/reset.js's wipeCloudinary().
+const AUDIO_PREFIX = "bolo/audio/";
+const deleteAllAudio = async () => {
+  assertConfigured();
+
+  let cursor;
+  let deleted = 0;
+  do {
+    // eslint-disable-next-line no-await-in-loop
+    const page = await cloudinary.api.resources({
+      type: "upload",
+      resource_type: "video",
+      prefix: AUDIO_PREFIX,
+      max_results: 100,
+      next_cursor: cursor,
+    });
+    const ids = (page.resources || []).map((r) => r.public_id);
+    if (ids.length) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await cloudinary.api.delete_resources(ids, { resource_type: "video", invalidate: true });
+      deleted += Object.values(res.deleted || {}).filter((s) => s === "deleted").length;
+    }
+    cursor = page.next_cursor;
+  } while (cursor);
+
+  await cloudinary.api.delete_folder(AUDIO_PREFIX).catch(() => {});
+  logger.info(`Cloudinary: wiped ${deleted} audio file(s) under ${AUDIO_PREFIX}`);
+  return deleted;
+};
+
 const getAudioStream = async (audioUrl) => {
   if (!audioUrl) {
     const err = new Error("Audio URL is required.");
@@ -102,4 +133,4 @@ const getAudioStream = async (audioUrl) => {
   });
 };
 
-module.exports = { uploadAudio, deleteAudio, deleteAudioBulk, getAudioStream };
+module.exports = { uploadAudio, deleteAudio, deleteAudioBulk, deleteAllAudio, getAudioStream };

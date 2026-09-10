@@ -7,6 +7,7 @@ import {
   getBackupStatus,
   downloadBackup,
   runCleanup,
+  resetDatabase,
 } from "../../api/admin.api";
 import { Users, FolderOpen, ClipboardList, ShieldCheck, Archive, Trash2, AlertTriangle } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
@@ -22,6 +23,10 @@ export default function AdminDashboard() {
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleanupText, setCleanupText] = useState("");
+
+  const [resetScope, setResetScope] = useState(null); // "full" | "retain-users" | null
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetText, setResetText] = useState("");
 
   const loadDashboard = () =>
     getDashboard()
@@ -70,8 +75,34 @@ export default function AdminDashboard() {
     }
   };
 
+  const closeReset = () => {
+    if (resetBusy) return;
+    setResetScope(null);
+    setResetText("");
+  };
+
+  const handleReset = async () => {
+    setResetBusy(true);
+    try {
+      const res = await resetDatabase(resetScope);
+      const s = res.data.data;
+      toast.success(
+        `Reset complete. Removed ${s.projectsDeleted} project(s), ${s.tasksDeleted} task(s)` +
+          (s.usersDeleted ? `, ${s.usersDeleted} user(s)` : "") + "."
+      );
+      setResetScope(null);
+      setResetText("");
+      await Promise.all([loadDashboard(), loadBackup()]);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Reset failed.");
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
   const pending = backup?.pending || {};
   const canCleanup = !!backup?.canCleanup && !backup?.inProgress;
+  const busyOp = backup?.inProgress; // "backup" | "cleanup" | "reset" | null
 
   return (
     <AdminLayout>
@@ -183,7 +214,7 @@ export default function AdminDashboard() {
               <button
                 type="button"
                 onClick={handleBackup}
-                disabled={backupBusy || backup?.inProgress === "backup"}
+                disabled={backupBusy || !!busyOp}
                 className="btn-primary inline-flex items-center gap-2"
               >
                 <Archive size={16} /> {backupBusy ? "Preparing…" : "Download backup (.zip)"}
@@ -200,6 +231,34 @@ export default function AdminDashboard() {
               {!canCleanup && !backup?.lastBackupHadErrors && (
                 <span className="text-xs text-primary-400">Download a fresh backup to enable cleanup.</span>
               )}
+            </div>
+          </div>
+
+          {/* Danger zone */}
+          <div className="card mt-6 border-red-300 bg-red-50/40">
+            <h2 className="text-sm font-semibold text-red-700 uppercase tracking-wide flex items-center gap-2">
+              <AlertTriangle size={15} /> Danger zone
+            </h2>
+            <p className="text-primary-500 text-sm mt-1 mb-4">
+              Wipes the database <strong>and</strong> all Cloudinary audio. No backup is taken. This cannot be undone.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setResetScope("full")}
+                disabled={!!busyOp}
+                className="btn-secondary inline-flex items-center gap-2 border-red-400 text-red-700 hover:bg-red-100 disabled:opacity-50"
+              >
+                <Trash2 size={16} /> Reset — keep admin accounts only
+              </button>
+              <button
+                type="button"
+                onClick={() => setResetScope("retain-users")}
+                disabled={!!busyOp}
+                className="btn-secondary inline-flex items-center gap-2 border-red-400 text-red-700 hover:bg-red-100 disabled:opacity-50"
+              >
+                <Trash2 size={16} /> Reset — keep all user accounts
+              </button>
             </div>
           </div>
         </>
@@ -240,6 +299,51 @@ export default function AdminDashboard() {
                 disabled={cleanupBusy || cleanupText !== "CLEANUP"}
               >
                 {cleanupBusy ? "Cleaning…" : "Delete & keep progress"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {resetScope && (
+        <Modal
+          title={resetScope === "full" ? "Reset — keep admin accounts only" : "Reset — keep all user accounts"}
+          onClose={closeReset}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <span>
+                Permanently deletes every project, task, submission, assignment, and all progress
+                history, plus all Cloudinary audio.{" "}
+                {resetScope === "full"
+                  ? "All non-admin user accounts are also deleted."
+                  : "User accounts are kept."}{" "}
+                No backup is taken and this cannot be undone.
+              </span>
+            </div>
+            <div>
+              <label className="label">Type <span className="font-mono">RESET</span> to confirm</label>
+              <input
+                type="text"
+                className="input"
+                value={resetText}
+                onChange={(e) => setResetText(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={closeReset} disabled={resetBusy}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary bg-red-600 hover:bg-red-700 border-red-600"
+                onClick={handleReset}
+                disabled={resetBusy || resetText !== "RESET"}
+              >
+                {resetBusy ? "Resetting…" : "Reset database"}
               </button>
             </div>
           </div>

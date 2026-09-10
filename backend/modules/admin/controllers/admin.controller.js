@@ -2,6 +2,7 @@ const path = require("path");
 const svc = require("../services/admin.service");
 const backupSvc = require("../services/backup.service");
 const cleanupSvc = require("../services/cleanup.service");
+const resetSvc = require("../services/reset.service");
 const { successResponse, errorResponse, notFoundResponse } = require("../../../responses/apiResponse");
 const logger = require("../../../logging/logger");
 
@@ -49,6 +50,23 @@ const runCleanup = async (req, res, next) => {
     }
     const stats = await cleanupSvc.runCleanup();
     return successResponse(res, "Cleanup complete. Progress has been retained.", stats);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
+// Danger zone: wipe the database + Cloudinary. scope "full" keeps only admin
+// accounts; "retain-users" keeps every user. No backup, no undo.
+const resetDatabase = async (req, res, next) => {
+  try {
+    const { scope, confirm } = req.body || {};
+    if (confirm !== "RESET") {
+      return errorResponse(res, 'Type "RESET" to confirm.', 400);
+    }
+    logger.warn(`Admin ${req.user.id} requested database reset (scope: ${scope})`);
+    const stats = await resetSvc.runReset({ scope, adminId: req.user.id });
+    return successResponse(res, "Database reset complete.", stats);
   } catch (err) {
     if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
     next(err);
@@ -413,6 +431,7 @@ module.exports = {
   getBackupStatus,
   downloadBackup,
   runCleanup,
+  resetDatabase,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
   deleteUser, bulkDeleteUsers,
   getUserSubmissions,

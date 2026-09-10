@@ -33,6 +33,12 @@ router.get("/backup", ctrl.downloadBackup);
 router.get("/backup/status", ctrl.getBackupStatus);
 router.post("/cleanup", ctrl.runCleanup);
 
+// ─── Danger zone ─────────────────────────────────────────────────────────────
+// POST /reset { scope: "full" | "retain-users", confirm: "RESET" }
+// Wipes the database + Cloudinary. "full" keeps only admin accounts;
+// "retain-users" keeps every user. Irreversible, no backup.
+router.post("/reset", ctrl.resetDatabase);
+
 // ─── Result export (partial results, no completion gate) ─────────────────────
 router.get("/export", ctrl.exportResults);
 router.get("/projects/:projectId/export", [validateObjectId("projectId"), validate], ctrl.exportProjectResults);

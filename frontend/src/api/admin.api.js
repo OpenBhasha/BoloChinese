@@ -9,6 +9,9 @@ export const getBackupStatus = () => api.get("/admin/backup/status");
 export const downloadBackup = () => api.get("/admin/backup", { responseType: "blob" });
 export const runCleanup = () => api.post("/admin/cleanup", { confirm: "CLEANUP" });
 
+// scope: "full" (keep only admins) | "retain-users" (keep all users)
+export const resetDatabase = (scope) => api.post("/admin/reset", { scope, confirm: "RESET" });
+
 // Users
 // deleted: undefined (default = active only), true (deleted only), "all" (both)
 export const getAllUsers = (opts = {}) => {
