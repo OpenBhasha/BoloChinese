@@ -35,8 +35,9 @@ router.post("/cleanup", ctrl.runCleanup);
 
 // ─── Danger zone ─────────────────────────────────────────────────────────────
 // POST /reset { scope: "full" | "retain-users", confirm: "RESET" }
-// Wipes the database + Cloudinary. "full" keeps only admin accounts;
-// "retain-users" keeps every user. Irreversible, no backup.
+// Removes all tasks, submissions, audio and progress. "full" also wipes every
+// non-admin user and all projects; "retain-users" keeps users and projects.
+// Irreversible, no backup.
 router.post("/reset", ctrl.resetDatabase);
 
 // ─── Result export (partial results, no completion gate) ─────────────────────

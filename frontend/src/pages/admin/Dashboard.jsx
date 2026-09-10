@@ -240,7 +240,8 @@ export default function AdminDashboard() {
               <AlertTriangle size={15} /> Danger zone
             </h2>
             <p className="text-primary-500 text-sm mt-1 mb-4">
-              Wipes the database <strong>and</strong> all Cloudinary audio. No backup is taken. This cannot be undone.
+              Removes all tasks, submissions, audio, and progress — plus every Cloudinary audio file.
+              No backup is taken. This cannot be undone.
             </p>
             <div className="flex items-center gap-3 flex-wrap">
               <button
@@ -257,7 +258,7 @@ export default function AdminDashboard() {
                 disabled={!!busyOp}
                 className="btn-secondary inline-flex items-center gap-2 border-red-400 text-red-700 hover:bg-red-100 disabled:opacity-50"
               >
-                <Trash2 size={16} /> Reset — keep all user accounts
+                <Trash2 size={16} /> Reset — keep users &amp; projects
               </button>
             </div>
           </div>
@@ -307,7 +308,7 @@ export default function AdminDashboard() {
 
       {resetScope && (
         <Modal
-          title={resetScope === "full" ? "Reset — keep admin accounts only" : "Reset — keep all user accounts"}
+          title={resetScope === "full" ? "Reset — keep admin accounts only" : "Reset — keep users & projects"}
           onClose={closeReset}
           size="sm"
         >
@@ -315,11 +316,17 @@ export default function AdminDashboard() {
             <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               <AlertTriangle size={16} className="mt-0.5 shrink-0" />
               <span>
-                Permanently deletes every project, task, submission, assignment, and all progress
-                history, plus all Cloudinary audio.{" "}
-                {resetScope === "full"
-                  ? "All non-admin user accounts are also deleted."
-                  : "User accounts are kept."}{" "}
+                {resetScope === "full" ? (
+                  <>
+                    Permanently deletes every project, assignment, task, submission, and all progress
+                    history, plus all Cloudinary audio. All non-admin user accounts are also deleted.
+                  </>
+                ) : (
+                  <>
+                    Permanently deletes all tasks, submissions, and progress history, plus all
+                    Cloudinary audio. User accounts and projects (with their assignments) are kept.
+                  </>
+                )}{" "}
                 No backup is taken and this cannot be undone.
               </span>
             </div>

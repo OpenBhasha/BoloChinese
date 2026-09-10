@@ -56,8 +56,9 @@ const runCleanup = async (req, res, next) => {
   }
 };
 
-// Danger zone: wipe the database + Cloudinary. scope "full" keeps only admin
-// accounts; "retain-users" keeps every user. No backup, no undo.
+// Danger zone: wipe tasks/submissions/audio/progress. scope "full" also
+// deletes every non-admin user and all projects; "retain-users" keeps all
+// users and projects. No backup, no undo.
 const resetDatabase = async (req, res, next) => {
   try {
     const { scope, confirm } = req.body || {};
