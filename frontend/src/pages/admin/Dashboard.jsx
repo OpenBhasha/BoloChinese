@@ -24,7 +24,7 @@ export default function AdminDashboard() {
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleanupText, setCleanupText] = useState("");
 
-  const [resetScope, setResetScope] = useState(null); // "full" | "retain-users" | null
+  const [resetScope, setResetScope] = useState(null); // "tasks" | "retain-users" | "full" | null
   const [resetBusy, setResetBusy] = useState(false);
   const [resetText, setResetText] = useState("");
 
@@ -86,10 +86,10 @@ export default function AdminDashboard() {
     try {
       const res = await resetDatabase(resetScope);
       const s = res.data.data;
-      toast.success(
-        `Reset complete. Removed ${s.projectsDeleted} project(s), ${s.tasksDeleted} task(s)` +
-          (s.usersDeleted ? `, ${s.usersDeleted} user(s)` : "") + "."
-      );
+      const parts = [`${s.tasksDeleted} task(s)`, `${s.submissionsDeleted} submission(s)`];
+      if (s.projectsDeleted) parts.push(`${s.projectsDeleted} project(s)`);
+      if (s.usersDeleted) parts.push(`${s.usersDeleted} user(s)`);
+      toast.success(`Reset complete. Removed ${parts.join(", ")}.`);
       setResetScope(null);
       setResetText("");
       await Promise.all([loadDashboard(), loadBackup()]);
@@ -240,17 +240,17 @@ export default function AdminDashboard() {
               <AlertTriangle size={15} /> Danger zone
             </h2>
             <p className="text-primary-500 text-sm mt-1 mb-4">
-              Removes all tasks, submissions, audio, and progress — plus every Cloudinary audio file.
+              Removes all tasks, submissions, and audio — plus every Cloudinary audio file.
               No backup is taken. This cannot be undone.
             </p>
             <div className="flex items-center gap-3 flex-wrap">
               <button
                 type="button"
-                onClick={() => setResetScope("full")}
+                onClick={() => setResetScope("tasks")}
                 disabled={!!busyOp}
                 className="btn-secondary inline-flex items-center gap-2 border-red-400 text-red-700 hover:bg-red-100 disabled:opacity-50"
               >
-                <Trash2 size={16} /> Reset — keep admin accounts only
+                <Trash2 size={16} /> Reset all tasks
               </button>
               <button
                 type="button"
@@ -259,6 +259,14 @@ export default function AdminDashboard() {
                 className="btn-secondary inline-flex items-center gap-2 border-red-400 text-red-700 hover:bg-red-100 disabled:opacity-50"
               >
                 <Trash2 size={16} /> Reset — keep users &amp; projects
+              </button>
+              <button
+                type="button"
+                onClick={() => setResetScope("full")}
+                disabled={!!busyOp}
+                className="btn-secondary inline-flex items-center gap-2 border-red-400 text-red-700 hover:bg-red-100 disabled:opacity-50"
+              >
+                <Trash2 size={16} /> Reset — keep admin accounts only
               </button>
             </div>
           </div>
@@ -308,7 +316,13 @@ export default function AdminDashboard() {
 
       {resetScope && (
         <Modal
-          title={resetScope === "full" ? "Reset — keep admin accounts only" : "Reset — keep users & projects"}
+          title={
+            resetScope === "full"
+              ? "Reset — keep admin accounts only"
+              : resetScope === "retain-users"
+              ? "Reset — keep users & projects"
+              : "Reset all tasks"
+          }
           onClose={closeReset}
           size="sm"
         >
@@ -321,10 +335,15 @@ export default function AdminDashboard() {
                     Permanently deletes every project, assignment, task, submission, and all progress
                     history, plus all Cloudinary audio. All non-admin user accounts are also deleted.
                   </>
-                ) : (
+                ) : resetScope === "retain-users" ? (
                   <>
                     Permanently deletes all tasks, submissions, and progress history, plus all
                     Cloudinary audio. User accounts and projects (with their assignments) are kept.
+                  </>
+                ) : (
+                  <>
+                    Permanently deletes all tasks, submissions, and their Cloudinary audio. Users,
+                    projects, assignments, and all progress history are kept.
                   </>
                 )}{" "}
                 No backup is taken and this cannot be undone.

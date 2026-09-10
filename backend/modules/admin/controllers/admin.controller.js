@@ -56,9 +56,10 @@ const runCleanup = async (req, res, next) => {
   }
 };
 
-// Danger zone: wipe tasks/submissions/audio/progress. scope "full" also
-// deletes every non-admin user and all projects; "retain-users" keeps all
-// users and projects. No backup, no undo.
+// Danger zone: wipe tasks/submissions/audio. scope "tasks" keeps everything
+// else (incl. the progress ledger); "retain-users" also clears progress but
+// keeps users + projects; "full" also deletes non-admin users + projects.
+// No backup, no undo.
 const resetDatabase = async (req, res, next) => {
   try {
     const { scope, confirm } = req.body || {};

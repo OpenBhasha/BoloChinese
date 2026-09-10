@@ -34,9 +34,10 @@ router.get("/backup/status", ctrl.getBackupStatus);
 router.post("/cleanup", ctrl.runCleanup);
 
 // ─── Danger zone ─────────────────────────────────────────────────────────────
-// POST /reset { scope: "full" | "retain-users", confirm: "RESET" }
-// Removes all tasks, submissions, audio and progress. "full" also wipes every
-// non-admin user and all projects; "retain-users" keeps users and projects.
+// POST /reset { scope: "tasks" | "retain-users" | "full", confirm: "RESET" }
+// Every scope removes all tasks, submissions and audio. "tasks" keeps
+// everything else incl. progress history; "retain-users" also clears progress
+// but keeps users + projects; "full" also wipes non-admin users + projects.
 // Irreversible, no backup.
 router.post("/reset", ctrl.resetDatabase);
 

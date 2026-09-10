@@ -1,15 +1,17 @@
 /**
- * Danger-zone database reset. Two scopes:
+ * Danger-zone database reset. Three scopes, least to most destructive:
  *
- *   "full"         - clean slate: deletes every non-admin user, every project,
- *                    assignment, task, submission, and the progress ledger.
- *                    Retained users lose their dangling dedicatedProjectId.
- *   "retain-users" - keeps all user accounts AND all projects (with their
- *                    assignments) - only tasks, submissions, audio and the
- *                    progress ledger go, ready for a fresh daily batch.
+ *   "tasks"        - deletes only tasks, submissions and Cloudinary audio.
+ *                    Users, projects, assignments AND the lifetime progress
+ *                    ledger all stay.
+ *   "retain-users" - the above, and also clears the progress ledger. Users and
+ *                    projects (with their assignments) still stay.
+ *   "full"         - clean slate: also deletes every non-admin user, every
+ *                    project and assignment; retained users lose their dangling
+ *                    dedicatedProjectId.
  *
- * Either way: every task/submission is removed, every Cloudinary audio under
- * bolo/audio/ is purged, and the backup handshake + taskId counter are reset.
+ * Every scope removes all tasks/submissions, purges every Cloudinary audio
+ * under bolo/audio/, and resets the backup handshake + taskId counter.
  *
  * Irreversible, no backup step - the caller (the dashboard) gates it behind a
  * typed confirmation.
@@ -26,35 +28,41 @@ const logger = require("../../../logging/logger");
 const { deleteAllAudio } = require("../../../services/cloudinary.service");
 const lock = require("./backupLock");
 
-const SCOPES = ["full", "retain-users"];
+const SCOPES = ["tasks", "retain-users", "full"];
 
 const runReset = async ({ scope, adminId }) => {
   if (!SCOPES.includes(scope)) {
-    const err = new Error("scope must be 'full' or 'retain-users'.");
+    const err = new Error("scope must be 'tasks', 'retain-users' or 'full'.");
     err.statusCode = 400;
     throw err;
   }
 
-  const keepProjects = scope === "retain-users";
+  const keepUsers = scope !== "full";
+  const keepProjects = scope !== "full";
+  const keepLedger = scope === "tasks";
 
   lock.acquire("reset");
   try {
     let usersDeleted = 0;
-    if (scope === "full") {
+    if (!keepUsers) {
       const r = await User.deleteMany({ role: { $ne: "admin" } });
       usersDeleted = r.deletedCount || 0;
     }
 
-    // Always gone.
-    const [subs, tasks, ledger] = await Promise.all([
+    const [subs, tasks] = await Promise.all([
       TaskSubmission.deleteMany({}),
       Task.deleteMany({}),
-      UserProgress.deleteMany({}),
     ]);
+
+    let progressRowsDeleted = 0;
+    if (!keepLedger) {
+      const l = await UserProgress.deleteMany({});
+      progressRowsDeleted = l.deletedCount || 0;
+    }
+
     await Counter.deleteMany({});
     await BackupState.deleteMany({});
 
-    // Project structure: kept for "retain-users", wiped for "full".
     let projectsDeleted = 0;
     let assignmentsDeleted = 0;
     if (keepProjects) {
@@ -89,7 +97,7 @@ const runReset = async ({ scope, adminId }) => {
       assignmentsDeleted,
       tasksDeleted: tasks.deletedCount || 0,
       submissionsDeleted: subs.deletedCount || 0,
-      progressRowsDeleted: ledger.deletedCount || 0,
+      progressRowsDeleted,
       audioDeleted,
       audioError,
     };
