@@ -28,7 +28,9 @@ const getProjectsForUser = async (userId) => {
   const [projects, projectTasks, submissions] = await Promise.all([
     Project.find({ _id: { $in: projectIds } }).sort({ createdAt: -1 }).lean(),
     Task.find({ projectId: { $in: projectIds } }).select("_id projectId").lean(),
-    TaskSubmission.find({ userId, projectId: { $in: projectIds } }).select("projectId taskId status").lean(),
+    TaskSubmission.find({ userId, projectId: { $in: projectIds } })
+      .select("projectId taskId status isCorrected")
+      .lean(),
   ]);
 
   const taskIdsByProject = new Map();
@@ -38,24 +40,28 @@ const getProjectsForUser = async (userId) => {
     taskIdsByProject.get(key).add(task._id.toString());
   });
 
+  const EMPTY_STATS = { total: 0, completed: 0, edited: 0, inProgress: 0, discarded: 0, pending: 0 };
   const statsByProject = new Map();
   projectIds.forEach((pid) => {
     const key = pid.toString();
     const total = taskIdsByProject.get(key)?.size || 0;
-    statsByProject.set(key, { total, completed: 0, inProgress: 0, discarded: 0, pending: total });
+    statsByProject.set(key, { ...EMPTY_STATS, total, pending: total });
   });
 
   const IN_PROGRESS_STATUSES = new Set(["in-progress", "verified", "corrected", "recorded"]);
 
   submissions.forEach((s) => {
     const key = s.projectId.toString();
-    if (!statsByProject.has(key)) {
-      statsByProject.set(key, { total: 0, completed: 0, inProgress: 0, discarded: 0, pending: 0 });
-    }
+    if (!statsByProject.has(key)) statsByProject.set(key, { ...EMPTY_STATS });
     const stats = statsByProject.get(key);
+    // A task is done once its audio is submitted OR it's discarded - both are
+    // terminal for the annotator. "Edited" (isCorrected) is tracked alongside
+    // and isn't mutually exclusive with completed/discarded: correcting the
+    // transcript before recording, or before discarding, still counts as edited.
     if (s.status === "completed") stats.completed += 1;
     else if (s.status === "discarded") stats.discarded += 1;
     else if (IN_PROGRESS_STATUSES.has(s.status)) stats.inProgress += 1;
+    if (s.isCorrected) stats.edited += 1;
   });
 
   statsByProject.forEach((stats) => {
@@ -65,13 +71,7 @@ const getProjectsForUser = async (userId) => {
 
   return projects.map((project) => ({
     ...project,
-    stats: statsByProject.get(project._id.toString()) || {
-      total: 0,
-      completed: 0,
-      inProgress: 0,
-      discarded: 0,
-      pending: 0,
-    },
+    stats: statsByProject.get(project._id.toString()) || { ...EMPTY_STATS },
   }));
 };
 

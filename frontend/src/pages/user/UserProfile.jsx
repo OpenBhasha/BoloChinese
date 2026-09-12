@@ -293,7 +293,10 @@ export default function UserProfile() {
                   </div>
                   <div className="text-right text-xs text-black/70 shrink-0">
                     <div>{done}/{total} done</div>
-                    <div className="text-black/50">{stats.pending || 0} pending</div>
+                    <div className="text-black/50">
+                      {stats.pending || 0} pending
+                      {stats.edited ? ` · ${stats.edited} edited` : ""}
+                    </div>
                   </div>
                 </li>
               );

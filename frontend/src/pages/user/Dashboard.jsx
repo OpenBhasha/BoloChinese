@@ -49,7 +49,9 @@ export default function UserDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {projects.map((p) => {
                 const total = p.stats?.total || 0;
-                const completed = p.stats?.completed || 0;
+                // A task is done once audio is submitted OR it's discarded - both
+                // are terminal, so both count toward "completed" here.
+                const completed = (p.stats?.completed || 0) + (p.stats?.discarded || 0);
                 const pct = total ? Math.round((completed / total) * 100) : 0;
 
                 return (
