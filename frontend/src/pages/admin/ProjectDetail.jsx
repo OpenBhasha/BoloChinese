@@ -97,19 +97,15 @@ export default function ProjectDetail() {
       return undefined;
     }
     if (!project) return undefined;
-    if ((project.taskCount || 0) === 0) {
-      setSubmissionItems([]);
-      setSubmissionPagination({ page: 1, totalPages: 1, total: 0 });
-      setSubmissionsLoading(false);
-      return undefined;
-    }
 
     let ignore = false;
     setSubmissionsLoading(true);
 
     // Server-paginated: one page of recordings (hasAudio) for this project,
     // filtered + sorted in Mongo. No more "fetch every submission, group and
-    // paginate on the client".
+    // paginate on the client". Always fetched, even when taskCount is 0 -
+    // deleting a task keeps its submissions, so a project can have recordings
+    // with no current tasks.
     getProjectSubmissions(id, {
       page: submissionPage,
       limit: 20,
@@ -610,12 +606,20 @@ export default function ProjectDetail() {
                       <p className="text-sm">Loading submissions…</p>
                     </div>
                   ) : paginatedSubmissionRows.length ? (
-                    paginatedSubmissionRows.map(({ task: rowTask, submission }) => (
+                    paginatedSubmissionRows.map(({ task: rowTask, submission }) => {
+                      const taskDeleted = !rowTask?._id;
+                      return (
                       <div key={submission._id} className="p-4 space-y-2 hover:bg-primary-50/70 transition">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-xs text-primary-700 bg-primary-100 px-2 py-0.5 rounded truncate">{rowTask.taskId}</span>
+                          {taskDeleted ? (
+                            <span className="text-xs italic text-black/50">Task deleted</span>
+                          ) : (
+                            <span className="font-mono text-xs text-primary-700 bg-primary-100 px-2 py-0.5 rounded truncate">{rowTask.taskId}</span>
+                          )}
                         </div>
-                        <p className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-2 py-0.5 rounded w-fit">{rowTask.dialogueId}</p>
+                        {!taskDeleted && (
+                          <p className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-2 py-0.5 rounded w-fit">{rowTask.dialogueId}</p>
+                        )}
                         <div>
                           <p className="text-sm text-black/80">{submission.userId?.name || "Unknown user"}</p>
                           <p className="text-[11px] text-black/60">{submission.userId?.email || "no-email"}</p>
@@ -624,8 +628,10 @@ export default function ProjectDetail() {
                         <div className="flex justify-end gap-2">
                           <button
                             type="button"
+                            disabled={taskDeleted}
                             onClick={() => openSubmission(rowTask._id, { preferredSubmissionId: submission._id })}
-                            className="text-[11px] font-semibold text-primary-800 hover:text-primary-900"
+                            className={`text-[11px] font-semibold ${taskDeleted ? "text-black/30 cursor-not-allowed" : "text-primary-800 hover:text-primary-900"}`}
+                            title={taskDeleted ? "Task deleted - details unavailable" : undefined}
                           >
                             Details
                           </button>
@@ -638,7 +644,8 @@ export default function ProjectDetail() {
                           </button>
                         </div>
                       </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="px-4 py-12 text-center text-black/60">
                       <Mic2 size={32} className="mx-auto mb-2 opacity-30" />
@@ -792,17 +799,25 @@ export default function ProjectDetail() {
                         </td>
                       </tr>
                     ) : paginatedSubmissionRows.length ? (
-                      paginatedSubmissionRows.map(({ task: rowTask, submission }) => (
+                      paginatedSubmissionRows.map(({ task: rowTask, submission }) => {
+                        const taskDeleted = !rowTask?._id;
+                        return (
                         <tr
                           key={submission._id}
-                          className="border-b border-[#d8e0d5] hover:bg-primary-50/60 transition cursor-pointer"
-                          onClick={() => openSubmission(rowTask._id, { preferredSubmissionId: submission._id })}
+                          className={`border-b border-[#d8e0d5] hover:bg-primary-50/60 transition ${taskDeleted ? "" : "cursor-pointer"}`}
+                          onClick={taskDeleted ? undefined : () => openSubmission(rowTask._id, { preferredSubmissionId: submission._id })}
                         >
                           <td className="px-2 py-3.5 w-[12%]">
-                            <span className="font-mono text-xs text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded block truncate">{rowTask.taskId}</span>
+                            {taskDeleted ? (
+                              <span className="text-xs italic text-black/50">Task deleted</span>
+                            ) : (
+                              <span className="font-mono text-xs text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded block truncate">{rowTask.taskId}</span>
+                            )}
                           </td>
                           <td className="px-2 py-3.5 w-[15%]">
-                            <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{rowTask.dialogueId}</span>
+                            {!taskDeleted && (
+                              <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{rowTask.dialogueId}</span>
+                            )}
                           </td>
                           <td className="px-2 py-3.5 w-[25%]">
                             <div className="text-black/80 text-xs" title={submission.userId?.email}>
@@ -817,12 +832,13 @@ export default function ProjectDetail() {
                             <div className="flex gap-2">
                               <button
                                 type="button"
+                                disabled={taskDeleted}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   openSubmission(rowTask._id, { preferredSubmissionId: submission._id });
                                 }}
-                                className="text-[11px] font-semibold text-primary-800 hover:text-primary-900"
-                                title="View submission details"
+                                className={`text-[11px] font-semibold ${taskDeleted ? "text-black/30 cursor-not-allowed" : "text-primary-800 hover:text-primary-900"}`}
+                                title={taskDeleted ? "Task deleted - details unavailable" : "View submission details"}
                               >
                                 Details
                               </button>
@@ -839,7 +855,8 @@ export default function ProjectDetail() {
                             </div>
                           </td>
                         </tr>
-                      ))
+                        );
+                      })
                     ) : (
                       <tr>
                         <td colSpan={5} className="px-4 py-12 text-center text-black/60">
