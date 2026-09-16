@@ -52,6 +52,11 @@ const getProjectsForUser = async (userId) => {
 
   submissions.forEach((s) => {
     const key = s.projectId.toString();
+    // A deleted task's submission survives for lifetime stats elsewhere, but
+    // it no longer describes any currently-assigned task - counting it here
+    // would let completed+inProgress+discarded exceed `total` and make
+    // "pending" (total - done) wrong or negative-clamped.
+    if (!taskIdsByProject.get(key)?.has(s.taskId.toString())) return;
     if (!statsByProject.has(key)) statsByProject.set(key, { ...EMPTY_STATS });
     const stats = statsByProject.get(key);
     // A task is done once its audio is submitted OR it's discarded - both are
@@ -151,11 +156,16 @@ const getTasksForUserByProject = async (
 };
 
 // Filter-chip counts for the project task list. total - submitted = pending.
+// Submissions are matched through a $lookup against the live Task collection
+// so a deleted task's orphaned submission (kept around for lifetime stats)
+// doesn't get counted against a currently-existing task's status.
 const getProjectTaskCountsForUser = async (userId, projectId) => {
   const [total, rows] = await Promise.all([
     Task.countDocuments({ projectId }),
     TaskSubmission.aggregate([
       { $match: { projectId: oid(projectId), userId: oid(userId) } },
+      { $lookup: { from: Task.collection.name, localField: "taskId", foreignField: "_id", as: "task" } },
+      { $match: { "task.0": { $exists: true } } },
       { $group: { _id: "$status", n: { $sum: 1 } } },
     ]),
   ]);

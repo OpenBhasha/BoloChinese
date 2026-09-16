@@ -417,9 +417,30 @@ const shapeProgress = (s) => {
     recorded: s.recorded || 0,
     audioDurationSeconds: Math.round(s.audioDurationSeconds || 0),
     timeSpentMs: Math.round(s.timeSpentMs || 0),
+    // Placeholder - getPerUserProgress overwrites this with a count taken
+    // directly off the user's currently-assigned tasks (see liveTouchedByUser
+    // below). `assigned - submitted` doesn't work here: `submitted` is a
+    // lifetime total that keeps counting a task's submission forever, even
+    // after that task is deleted and replaced by a different one, so the
+    // subtraction drifts negative/wrong as soon as any task churn happens.
     pending: Math.max(0, assigned - submitted),
     progressPercent: assigned ? Math.round(((completed + discarded) / assigned) * 100) : 0,
   };
+};
+
+// How many of a user's submissions belong to a task that still exists right
+// now. Deleting a task keeps its submission for lifetime stats, but that
+// submission no longer describes any currently-assigned task, so it must not
+// count as "touched" when working out how many of the CURRENT tasks are
+// still pending.
+const getLiveTouchedCountByUser = async (userIds) => {
+  const rows = await TaskSubmission.aggregate([
+    { $match: { userId: { $in: userIds } } },
+    { $lookup: { from: Task.collection.name, localField: "taskId", foreignField: "_id", as: "task" } },
+    { $match: { "task.0": { $exists: true } } },
+    { $group: { _id: "$userId", touched: { $sum: 1 } } },
+  ]);
+  return new Map(rows.map((r) => [r._id.toString(), r.touched]));
 };
 
 // Per-user rollup for the admin dashboard's user progress table. Each row
@@ -435,13 +456,14 @@ const getPerUserProgress = async () => {
   const activeUserIds = users.map((u) => u._id);
   const today = kolkataDate();
 
-  const [assignments, liveByUser, ledgerAllByUser, ledgerTodayByUser, taskCountRows] = await Promise.all([
+  const [assignments, liveByUser, ledgerAllByUser, ledgerTodayByUser, taskCountRows, touchedByUser] = await Promise.all([
     ProjectAssignment.find({ userId: { $in: activeUserIds } }).select("userId projectId").lean(),
     getLiveProgressByUser(activeUserIds),
     getLedgerByUser(activeUserIds),
     getLedgerByUser(activeUserIds, today),
     // One grouped count instead of one countDocuments per user.
     Task.aggregate([{ $group: { _id: "$projectId", n: { $sum: 1 } } }]),
+    getLiveTouchedCountByUser(activeUserIds),
   ]);
 
   const taskCountByProject = new Map(taskCountRows.map((r) => [String(r._id), r.n]));
@@ -462,8 +484,12 @@ const getPerUserProgress = async () => {
       );
 
       const live = { ...zeroProgress(), ...(liveByUser.get(key) || {}), assigned: liveAssigned };
-      const lifetime = shapeProgress(addProgress(ledgerAllByUser.get(key), live));
-      const todayStats = shapeProgress(addProgress(ledgerTodayByUser.get(key), live));
+      // Pending isn't a lifetime figure - it's "how many of my CURRENT tasks
+      // are untouched", so it's computed directly off the live task set
+      // rather than folded into shapeProgress's lifetime subtraction.
+      const pendingLive = Math.max(0, liveAssigned - (touchedByUser.get(key) || 0));
+      const lifetime = { ...shapeProgress(addProgress(ledgerAllByUser.get(key), live)), pending: pendingLive };
+      const todayStats = { ...shapeProgress(addProgress(ledgerTodayByUser.get(key), live)), pending: pendingLive };
 
       return {
         _id: u._id,
