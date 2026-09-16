@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { CheckCircle2, ChevronLeft, ExternalLink, Lock, Pencil, ShieldCheck, User2 } from "lucide-react";
 import UserLayout from "../../components/layout/UserLayout";
 import AdminLayout from "../../components/layout/AdminLayout";
+import UserResetDangerZone from "../../components/admin/UserResetDangerZone";
 import { PageSpinner } from "../../components/ui/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { getMyProfile, updateMyProfile } from "../../api/user.api";
@@ -304,6 +305,12 @@ export default function UserProfile() {
           </ul>
         )}
       </div>
+
+      {isAdminView && (
+        <div className="mt-6">
+          <UserResetDangerZone userId={routeUserId} userName={user.name} onReset={loadProfile} />
+        </div>
+      )}
     </Layout>
   );
 }

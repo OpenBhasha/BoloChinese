@@ -16,6 +16,10 @@ export const resetDatabase = (scope) => api.post("/admin/reset", { scope, confir
 export const resetUserData = (userId, scope) =>
 	api.post(`/admin/users/${userId}/reset`, { scope, confirm: "RESET" });
 
+// Per-project danger zone. scope: "tasks" (keep progress) | "progress" (wipe both, every assignee)
+export const resetProjectData = (projectId, scope) =>
+	api.post(`/admin/projects/${projectId}/reset`, { scope, confirm: "RESET" });
+
 // Users
 // deleted: undefined (default = active only), true (deleted only), "all" (both)
 export const getAllUsers = (opts = {}) => {

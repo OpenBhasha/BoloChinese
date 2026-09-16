@@ -94,6 +94,25 @@ const resetUserData = async (req, res, next) => {
   }
 };
 
+// Per-project danger zone: same idea as resetUserData, keyed by project
+// instead of resolving one from a user - works for a shared project too.
+// scope "tasks" wipes tasks/submissions/audio, keeping every assignee's
+// progress ledger; "progress" also clears the ledger for every assignee.
+const resetProjectData = async (req, res, next) => {
+  try {
+    const { scope, confirm } = req.body || {};
+    if (confirm !== "RESET") {
+      return errorResponse(res, 'Type "RESET" to confirm.', 400);
+    }
+    logger.warn(`Admin ${req.user.id} requested project reset for ${req.params.projectId} (scope: ${scope})`);
+    const stats = await resetSvc.runProjectReset({ projectId: req.params.projectId, scope, adminId: req.user.id });
+    return successResponse(res, "Project data reset complete.", stats);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 const getUserSubmissions = async (req, res, next) => {
   try {
@@ -451,6 +470,7 @@ module.exports = {
   runCleanup,
   resetDatabase,
   resetUserData,
+  resetProjectData,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
   deleteUser, bulkDeleteUsers,
   getUserSubmissions,

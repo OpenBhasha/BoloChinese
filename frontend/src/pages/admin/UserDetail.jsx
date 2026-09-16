@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { ChevronLeft, ClipboardList, CheckCircle2, Pencil, Clock3, Percent, BadgeCheck, Trash2, Mic, Timer, Download, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ClipboardList, CheckCircle2, Pencil, Clock3, Percent, BadgeCheck, Trash2, Mic, Timer, Download } from "lucide-react";
 import AdminLayout from "../../components/layout/AdminLayout";
 import Modal from "../../components/ui/Modal";
 import StatCard from "../../components/ui/StatCard";
+import UserResetDangerZone from "../../components/admin/UserResetDangerZone";
 import { PageSpinner, Spinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
 import { paginateRows } from "../../utils/pagination";
 import { formatDateTime, formatFileSize, formatDuration, downloadBlob } from "../../utils/format";
-import { getUsersProgress, getUserSubmissions, streamSubmissionAudio, exportUserResults, resetUserData } from "../../api/admin.api";
+import { getUsersProgress, getUserSubmissions, streamSubmissionAudio, exportUserResults } from "../../api/admin.api";
 
 export default function UserDetail() {
   const { id } = useParams();
@@ -22,10 +23,6 @@ export default function UserDetail() {
   const [audioUrl, setAudioUrl] = useState(null);
   const [audioLoading, setAudioLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  // Per-user danger zone: "tasks" (keep progress) | "progress" (wipe both) | null
-  const [resetScope, setResetScope] = useState(null);
-  const [resetBusy, setResetBusy] = useState(false);
-  const [resetText, setResetText] = useState("");
 
   const handleExport = async () => {
     setExporting(true);
@@ -52,31 +49,6 @@ export default function UserDetail() {
       })
       .catch(() => toast.error("Failed to load user details"))
       .finally(() => setLoading(false));
-  };
-
-  const closeReset = () => {
-    if (resetBusy) return;
-    setResetScope(null);
-    setResetText("");
-  };
-
-  const handleReset = async () => {
-    setResetBusy(true);
-    try {
-      const res = await resetUserData(id, resetScope);
-      const s = res.data.data;
-      toast.success(
-        `Removed ${s.tasksDeleted} task(s), ${s.submissionsDeleted} submission(s)` +
-          (s.progressRowsDeleted ? `, cleared their progress history.` : ".")
-      );
-      setResetScope(null);
-      setResetText("");
-      await loadUser();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Reset failed.");
-    } finally {
-      setResetBusy(false);
-    }
   };
 
   useEffect(() => {
@@ -172,31 +144,7 @@ export default function UserDetail() {
         <StatCard label="Progress (today)" value={`${progress.today?.progressPercent ?? 0}%`} icon={Percent} color="blue" />
       </div>
 
-      <div className="card mb-10 border-red-300 bg-red-50/40">
-        <h2 className="text-sm font-semibold text-red-700 uppercase tracking-wide flex items-center gap-2">
-          <AlertTriangle size={15} /> Danger zone
-        </h2>
-        <p className="text-primary-500 text-sm mt-1 mb-4">
-          Scoped to this user's own dedicated project only - no other annotator is affected.
-          No backup is taken and this cannot be undone.
-        </p>
-        <div className="flex items-center gap-3 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setResetScope("tasks")}
-            className="btn-secondary inline-flex items-center gap-2 border-red-400 text-red-700 hover:bg-red-100"
-          >
-            <Trash2 size={16} /> Reset tasks
-          </button>
-          <button
-            type="button"
-            onClick={() => setResetScope("progress")}
-            className="btn-secondary inline-flex items-center gap-2 border-red-400 text-red-700 hover:bg-red-100"
-          >
-            <Trash2 size={16} /> Reset tasks &amp; progress
-          </button>
-        </div>
-      </div>
+      <UserResetDangerZone userId={id} userName={progress.name} onReset={loadUser} />
 
       <div className="admin-datatable card p-0 overflow-hidden">
         <div className="p-4 flex justify-between items-center border-b border-primary-100 flex-wrap gap-2">
@@ -314,51 +262,6 @@ export default function UserDetail() {
               ) : (
                 <p className="text-sm text-black/60">No audio recorded yet.</p>
               )}
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {resetScope && (
-        <Modal
-          title={resetScope === "progress" ? "Reset tasks & progress" : "Reset tasks"}
-          onClose={closeReset}
-          size="sm"
-        >
-          <div className="space-y-4">
-            <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-              <span>
-                Permanently deletes {progress.name}'s tasks, submissions, and Cloudinary audio (their
-                own dedicated project only - nobody else is affected).{" "}
-                {resetScope === "progress"
-                  ? "Their lifetime progress history is also cleared."
-                  : "Their lifetime progress history is kept."}{" "}
-                No backup is taken and this cannot be undone.
-              </span>
-            </div>
-            <div>
-              <label className="label">Type <span className="font-mono">RESET</span> to confirm</label>
-              <input
-                type="text"
-                className="input"
-                value={resetText}
-                onChange={(e) => setResetText(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" className="btn-secondary" onClick={closeReset} disabled={resetBusy}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary bg-red-600 hover:bg-red-700 border-red-600"
-                onClick={handleReset}
-                disabled={resetBusy || resetText !== "RESET"}
-              >
-                {resetBusy ? "Resetting…" : "Reset"}
-              </button>
             </div>
           </div>
         </Modal>

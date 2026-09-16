@@ -16,9 +16,10 @@
  * Irreversible, no backup step - the caller (the dashboard) gates it behind a
  * typed confirmation.
  *
- * Also exports runUserReset() - the same idea narrowed to one annotator's
- * dedicated project, for a per-user "give them a fresh batch" reset. See its
- * own doc comment below.
+ * Also exports runUserReset() and runProjectReset() - the same idea narrowed
+ * to one annotator's dedicated project, or to one project directly, for a
+ * "give them a fresh batch" reset from the user or project page. See their
+ * own doc comments below.
  */
 const User = require("../../register/models/user.model");
 const Project = require("../models/project.model");
@@ -45,6 +46,31 @@ const purgeAudio = async (publicIds = []) => {
     logger.warn(`reset: Cloudinary cleanup skipped for ${publicIds.length} file(s): ${err.message}`);
     return { deleted: 0, error: err.message };
   }
+};
+
+// Shared by runUserReset and runProjectReset: wipe one project's tasks,
+// submissions and their Cloudinary audio. Ledger handling differs between the
+// two callers (one user vs. every assignee), so that stays out of here.
+const wipeProjectTasks = async (projectId) => {
+  const audioPublicIds = await TaskSubmission.find({
+    projectId,
+    "audio.publicId": { $ne: null },
+  }).distinct("audio.publicId");
+
+  const [subs, tasks] = await Promise.all([
+    TaskSubmission.deleteMany({ projectId }),
+    Task.deleteMany({ projectId }),
+  ]);
+  await Project.findByIdAndUpdate(projectId, { $set: { tasks: [] } });
+
+  const { deleted: audioDeleted, error: audioError } = await purgeAudio(audioPublicIds);
+
+  return {
+    tasksDeleted: tasks.deletedCount || 0,
+    submissionsDeleted: subs.deletedCount || 0,
+    audioDeleted,
+    audioError,
+  };
 };
 
 const runReset = async ({ scope, adminId }) => {
@@ -165,16 +191,7 @@ const runUserReset = async ({ userId, scope, adminId }) => {
 
   lock.acquire("user-reset");
   try {
-    const audioPublicIds = await TaskSubmission.find({
-      projectId,
-      "audio.publicId": { $ne: null },
-    }).distinct("audio.publicId");
-
-    const [subs, tasks] = await Promise.all([
-      TaskSubmission.deleteMany({ projectId }),
-      Task.deleteMany({ projectId }),
-    ]);
-    await Project.findByIdAndUpdate(projectId, { $set: { tasks: [] } });
+    const wipe = await wipeProjectTasks(projectId);
 
     let progressRowsDeleted = 0;
     if (scope === "progress") {
@@ -182,17 +199,12 @@ const runUserReset = async ({ userId, scope, adminId }) => {
       progressRowsDeleted = led.deletedCount || 0;
     }
 
-    const { deleted: audioDeleted, error: audioError } = await purgeAudio(audioPublicIds);
-
     const stats = {
       scope,
       userId: String(user._id),
       projectId: String(projectId),
-      tasksDeleted: tasks.deletedCount || 0,
-      submissionsDeleted: subs.deletedCount || 0,
+      ...wipe,
       progressRowsDeleted,
-      audioDeleted,
-      audioError,
     };
     logger.warn(`USER RESET (${scope}) for ${user.email} by admin ${adminId} | ${JSON.stringify(stats)}`);
     return stats;
@@ -201,4 +213,63 @@ const runUserReset = async ({ userId, scope, adminId }) => {
   }
 };
 
-module.exports = { runReset, SCOPES, runUserReset, USER_SCOPES };
+/**
+ * Per-project danger-zone reset - the same idea as runUserReset, but keyed by
+ * project instead of resolving one from a user. Useful for a shared project
+ * (more than one assignee) as well as a dedicated one.
+ *
+ *   "tasks"    - deletes the project's tasks, submissions and Cloudinary
+ *                audio. Every assignee's progress ledger stays untouched.
+ *   "progress" - the above, and also clears the progress ledger for every
+ *                user currently assigned to this project. On a shared
+ *                project that's *all* of their history, not just this
+ *                project's share of it (the ledger isn't broken down by
+ *                project) - the caller should make that clear before firing.
+ *
+ * Same exceptions as runUserReset: the taskId counter and BackupState are
+ * left alone.
+ */
+const runProjectReset = async ({ projectId, scope, adminId }) => {
+  if (!USER_SCOPES.includes(scope)) {
+    const err = new Error("scope must be 'tasks' or 'progress'.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const project = await Project.findById(projectId);
+  if (!project) {
+    const err = new Error("Project not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  lock.acquire("project-reset");
+  try {
+    const wipe = await wipeProjectTasks(projectId);
+
+    let progressRowsDeleted = 0;
+    let usersAffected = 0;
+    if (scope === "progress") {
+      const assignedUserIds = await ProjectAssignment.find({ projectId }).distinct("userId");
+      usersAffected = assignedUserIds.length;
+      if (assignedUserIds.length) {
+        const led = await UserProgress.deleteMany({ userId: { $in: assignedUserIds } });
+        progressRowsDeleted = led.deletedCount || 0;
+      }
+    }
+
+    const stats = {
+      scope,
+      projectId: String(project._id),
+      ...wipe,
+      progressRowsDeleted,
+      usersAffected,
+    };
+    logger.warn(`PROJECT RESET (${scope}) for "${project.name}" by admin ${adminId} | ${JSON.stringify(stats)}`);
+    return stats;
+  } finally {
+    lock.release();
+  }
+};
+
+module.exports = { runReset, SCOPES, runUserReset, runProjectReset, USER_SCOPES };

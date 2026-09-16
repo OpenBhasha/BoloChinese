@@ -84,6 +84,15 @@ router.get("/projects", ctrl.getAllProjects);
 router.get("/projects/:id", [validateObjectId("id"), validate], ctrl.getProjectById);
 router.patch("/projects/:id", [validateObjectId("id"), ...updateProjectValidator, validate], ctrl.updateProject);
 router.delete("/projects/:id", [validateObjectId("id"), validate], ctrl.deleteProject);
+// POST /projects/:projectId/reset { scope: "tasks" | "progress", confirm: "RESET" }
+// Per-project danger zone. "tasks" wipes tasks/submissions/audio and keeps
+// every assignee's progress ledger; "progress" also clears it - for every
+// assignee, not just one. Irreversible, no backup.
+router.post(
+  "/projects/:projectId/reset",
+  [validateObjectId("projectId"), validate],
+  ctrl.resetProjectData
+);
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 router.post("/projects/:projectId/tasks", [validateObjectId("projectId"), ...createTaskValidator, validate], ctrl.createTask);

@@ -23,6 +23,7 @@ import {
 import { Plus, Trash2, Pencil, ChevronLeft, Mic2, FileAudio, FileText, User2, CalendarClock, Upload, Download, FileDown } from "lucide-react";
 import { PageSpinner, Spinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
+import ProjectResetDangerZone from "../../components/admin/ProjectResetDangerZone";
 import { formatDateTime, formatFileSize, downloadBlob } from "../../utils/format";
 import toast from "react-hot-toast";
 
@@ -367,6 +368,24 @@ export default function ProjectDetail() {
     return () => { cancelled = true; };
   }, [activeView, id]);
 
+  // After a project-level reset: refetch the header (taskCount) and, if the
+  // Users tab is open, its assignee stats too. The Submissions list effect
+  // already re-runs on its own once `project` changes.
+  const handleProjectReset = async () => {
+    fetchProject();
+    if (activeView === ADMIN_PROJECT_VIEWS.USERS) {
+      setAssigneesLoading(true);
+      try {
+        const r = await getProjectAssignees(id);
+        setProjectAssignees(r.data.data || []);
+      } catch {
+        // non-fatal - the effect above retries next time the tab opens
+      } finally {
+        setAssigneesLoading(false);
+      }
+    }
+  };
+
   const runBulkDelete = async () => {
     const ids = Array.from(selectedTaskIds);
     if (!ids.length) return;
@@ -581,6 +600,8 @@ export default function ProjectDetail() {
               </button>
             </div>
           </div>
+
+          <ProjectResetDangerZone projectId={id} projectName={project?.name} onReset={handleProjectReset} />
 
           {activeView !== ADMIN_PROJECT_VIEWS.TASKS && (
             <div className="mb-3 flex justify-end">
