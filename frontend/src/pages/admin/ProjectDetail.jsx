@@ -757,7 +757,7 @@ export default function ProjectDetail() {
                         <p className="font-mono text-[11px] text-black/60">{user.username || "-"}</p>
                         <p className="text-xs text-black/70 truncate">{user.email || "-"}</p>
                         <div className="text-[11px] text-black/70">
-                          {stats.completed}/{stats.totalTasks} completed · {stats.inProgress} in progress · {stats.pending} pending
+                          {stats.done}/{stats.totalTasks} completed · {stats.inProgress} in progress · {stats.discarded} discarded · {stats.pending} pending
                         </div>
                       </Link>
                     ))
@@ -1030,7 +1030,7 @@ export default function ProjectDetail() {
                           </td>
                           <td className="px-2 py-3.5 w-[22%]">
                             <div className="text-xs text-black/75">
-                              {stats.completed}/{stats.totalTasks} completed
+                              {stats.done}/{stats.totalTasks} completed
                             </div>
                             <div className="text-[11px] text-black/55">
                               {stats.inProgress} in progress · {stats.discarded} discarded · {stats.pending} pending

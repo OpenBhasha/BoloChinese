@@ -262,11 +262,10 @@ const getProjectAssignees = async (projectId) => {
   const statsByUser = new Map();
   submissions.forEach(({ userId, status }) => {
     const key = String(userId);
-    const s = statsByUser.get(key) || { completed: 0, inProgress: 0, discarded: 0, skipped: 0, submitted: 0 };
+    const s = statsByUser.get(key) || { completed: 0, inProgress: 0, discarded: 0, submitted: 0 };
     s.submitted += 1;
     if (status === "completed") s.completed += 1;
     else if (status === "discarded") s.discarded += 1;
-    else if (status === "skipped") s.skipped += 1;
     else s.inProgress += 1;
     statsByUser.set(key, s);
   });
@@ -275,13 +274,17 @@ const getProjectAssignees = async (projectId) => {
     .filter((a) => userById.has(String(a.userId))) // drop assignments whose user is deleted
     .map((a) => {
       const user = userById.get(String(a.userId));
-      const stats = statsByUser.get(String(a.userId)) || { completed: 0, inProgress: 0, discarded: 0, skipped: 0, submitted: 0 };
+      const stats = statsByUser.get(String(a.userId)) || { completed: 0, inProgress: 0, discarded: 0, submitted: 0 };
       const pending = Math.max(0, totalTasks - stats.submitted);
+      // A task is done once its audio is submitted or it's discarded - both
+      // are terminal for the annotator (same rule as everywhere else progress
+      // is reported).
+      const done = stats.completed + stats.discarded;
       return {
         user,
         assignedAt: a.createdAt || a.updatedAt || null,
         assignedBy: a.assignedBy || null,
-        stats: { ...stats, pending, totalTasks },
+        stats: { ...stats, done, pending, totalTasks },
       };
     });
 };
