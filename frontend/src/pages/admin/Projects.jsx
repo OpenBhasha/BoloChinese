@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import AdminLayout from "../../components/layout/AdminLayout";
 import Modal from "../../components/ui/Modal";
 import { getAllProjects, createProject, updateProject, deleteProject } from "../../api/admin.api";
-import { useAuth } from "../../context/AuthContext";
 import { FolderOpen, Plus, Pencil, Trash2, ChevronRight } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
@@ -96,7 +95,7 @@ export default function AdminProjects() {
               <h3 className="font-semibold text-black mb-1">{p.name}</h3>
               <p className="text-sm text-black/70 mb-4 line-clamp-2">{p.description || "No description"}</p>
               <div className="flex items-center justify-between text-xs text-black/75">
-                <span>{p.tasks?.length ?? 0} tasks</span>
+                <span>{p.taskCount ?? 0} tasks</span>
                 <button
                   type="button"
                   onClick={(e) => {

@@ -347,7 +347,27 @@ const createProject = async ({ name, description, adminId }) => {
   return project;
 };
 
-const getAllProjects = async () => dao.getAllProjects();
+// Attach each project's taskCount without shipping the tasks[] array - the
+// list view never got this (only getProjectById did), so it always showed
+// 0 tasks. One grouped count instead of one countDocuments per project.
+const getAllProjects = async () => {
+  const projects = await dao.getAllProjects();
+  if (!projects.length) return projects;
+
+  const Task = require("../models/task.model");
+  const counts = await Task.aggregate([
+    { $match: { projectId: { $in: projects.map((p) => p._id) } } },
+    { $group: { _id: "$projectId", count: { $sum: 1 } } },
+  ]);
+  const countByProject = new Map(counts.map((c) => [String(c._id), c.count]));
+
+  return projects.map((p) => {
+    const obj = p.toObject ? p.toObject() : p;
+    obj.taskCount = countByProject.get(String(p._id)) || 0;
+    return obj;
+  });
+};
+
 const getProjectById = async (id) => {
   const project = await dao.getProjectById(id);
   if (!project) {

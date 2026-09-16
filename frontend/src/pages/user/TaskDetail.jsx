@@ -5,7 +5,7 @@ import { getTaskDetail, recordTaskTime } from "../../api/user.api";
 import AudioRecorder from "../../components/task/AudioRecorder";
 import TranscriptVerification from "../../components/task/TranscriptVerification";
 import StatusBadge from "../../utils/statusBadge";
-import { CheckCircle2, SkipBack, SkipForward, Lock, PartyPopper } from "lucide-react";
+import { SkipBack, SkipForward, Lock, PartyPopper } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
 
@@ -256,21 +256,6 @@ export default function TaskDetail() {
           onProjectTaskPatch={() => { refreshProjectTasks(); }}
           readOnly={readOnly}
         />
-
-        {/* Audio status */}
-        {(task.audio?.publicId || task.audio?.url) && (
-          <div className="card border-emerald-500/30">
-            <p className="label text-emerald-400 mb-2">Audio Recorded</p>
-            <div className="flex items-center gap-3 text-xs text-slate-400">
-              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-              <div>
-                <p className="text-emerald-300 font-medium">Audio uploaded successfully</p>
-                <p className="mt-0.5">{(task.audio.fileSizeBytes / 1024).toFixed(1)} KB · {task.audio.sampleRate} Hz · {task.audio.bitDepth}-bit · Mono</p>
-                <p className="mt-0.5 text-slate-500">{new Date(task.audio.uploadedAt).toLocaleString()}</p>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
       </div>
 
