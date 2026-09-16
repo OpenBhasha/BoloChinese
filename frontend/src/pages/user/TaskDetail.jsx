@@ -181,6 +181,7 @@ export default function TaskDetail() {
   const nextTask = nav.nextTaskId ? { _id: nav.nextTaskId } : null;
   const completedCount = nav.completedCount || 0;
   const totalTasks = nav.total || 0;
+  const currentPosition = nav.position || 0;
   const progressPercent = totalTasks ? Math.round((completedCount / totalTasks) * 100) : 0;
 
   if (loading) return <UserLayout><PageSpinner /></UserLayout>;
@@ -219,8 +220,7 @@ export default function TaskDetail() {
         <div className="mb-4 text-xs text-primary-500">Loading next task...</div>
       )}
 
-      {/* Header - status badge + dialogue id only. The "Task N of M" pill was
-          removed per product ask; the progress bar below still shows N/M. */}
+      {/* Header - status badge + dialogue id only. */}
       <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
           <div className="mb-1">
@@ -232,7 +232,12 @@ export default function TaskDetail() {
 
       <div className="space-y-4 min-w-0 overflow-x-hidden">
         <div className="card">
-          <p className="text-sm text-black/70 font-medium mb-2">{completedCount}/{totalTasks} Completed</p>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <p className="text-sm text-black/70 font-medium">{completedCount}/{totalTasks} Completed</p>
+            {/* Where this one sits in the project's order - kept in "sentence"
+                terms rather than "task N of M". */}
+            <p className="text-xs text-black/50 shrink-0">{currentPosition}/{totalTasks} sentences</p>
+          </div>
           <div className="w-full h-2 rounded-full bg-black/10 overflow-hidden">
             <div className="h-full bg-primary-700" style={{ width: `${progressPercent}%` }} />
           </div>

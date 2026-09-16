@@ -349,14 +349,23 @@ export default function AudioRecorder({
       );
     }
 
+    // Coming back to a task that already has submitted audio - the mic
+    // control doubles as "record again", so it reads as Retry rather than a
+    // fresh Start Recording.
+    const isRetake = hasStoredAudio && !recording;
+
     return (
       <button
         type="button"
         onClick={recording ? stopRecording : startRecording}
         className={`w-12 h-12 rounded-full flex items-center justify-center shadow transition ${recording ? "bg-red-500 animate-pulse" : "bg-white"}`}
-        aria-label={recording ? "Stop recording" : "Start recording"}
+        aria-label={recording ? "Stop recording" : isRetake ? "Retry recording" : "Start recording"}
       >
-        {recording ? renderRecordingWave() : <Mic size={22} className="text-primary-700" />}
+        {recording
+          ? renderRecordingWave()
+          : isRetake
+            ? <RotateCcw size={22} className="text-primary-700" />
+            : <Mic size={22} className="text-primary-700" />}
       </button>
     );
   };

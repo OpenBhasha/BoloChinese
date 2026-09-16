@@ -12,6 +12,10 @@ export const runCleanup = () => api.post("/admin/cleanup", { confirm: "CLEANUP" 
 // scope: "full" (keep only admins) | "retain-users" (keep all users)
 export const resetDatabase = (scope) => api.post("/admin/reset", { scope, confirm: "RESET" });
 
+// Per-user danger zone. scope: "tasks" (keep their progress) | "progress" (wipe both)
+export const resetUserData = (userId, scope) =>
+	api.post(`/admin/users/${userId}/reset`, { scope, confirm: "RESET" });
+
 // Users
 // deleted: undefined (default = active only), true (deleted only), "all" (both)
 export const getAllUsers = (opts = {}) => {

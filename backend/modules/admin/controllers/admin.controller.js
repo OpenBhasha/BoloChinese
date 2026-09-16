@@ -76,6 +76,24 @@ const resetDatabase = async (req, res, next) => {
   }
 };
 
+// Per-user danger zone: scope "tasks" wipes just this annotator's dedicated
+// project (tasks/submissions/audio), keeping their progress ledger; "progress"
+// also clears that ledger. No backup, no undo.
+const resetUserData = async (req, res, next) => {
+  try {
+    const { scope, confirm } = req.body || {};
+    if (confirm !== "RESET") {
+      return errorResponse(res, 'Type "RESET" to confirm.', 400);
+    }
+    logger.warn(`Admin ${req.user.id} requested user reset for ${req.params.id} (scope: ${scope})`);
+    const stats = await resetSvc.runUserReset({ userId: req.params.id, scope, adminId: req.user.id });
+    return successResponse(res, "User data reset complete.", stats);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 const getUserSubmissions = async (req, res, next) => {
   try {
@@ -432,6 +450,7 @@ module.exports = {
   downloadBackup,
   runCleanup,
   resetDatabase,
+  resetUserData,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
   deleteUser, bulkDeleteUsers,
   getUserSubmissions,

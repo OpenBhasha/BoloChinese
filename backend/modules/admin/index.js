@@ -57,6 +57,11 @@ router.patch("/users/:id", [validateObjectId("id"), ...updateUserValidator, vali
 // user's email/phone/username become free for a fresh sign-up.
 router.delete("/users/:id", [validateObjectId("id"), validate], ctrl.deleteUser);
 router.post("/users/bulk-delete", ctrl.bulkDeleteUsers);
+// POST /users/:id/reset { scope: "tasks" | "progress", confirm: "RESET" }
+// Per-user danger zone, scoped to just this annotator's dedicated project.
+// "tasks" wipes tasks/submissions/audio and keeps their progress ledger;
+// "progress" also clears that ledger. Irreversible, no backup.
+router.post("/users/:id/reset", [validateObjectId("id"), validate], ctrl.resetUserData);
 router.patch(
   "/projects/:projectId/assign/:userId",
   [validateObjectId("projectId"), validateObjectId("userId"), validate],
