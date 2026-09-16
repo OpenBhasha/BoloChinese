@@ -945,8 +945,8 @@ export default function ProjectDetail() {
                   Delete all {taskPagination.total} task{taskPagination.total === 1 ? "" : "s"} in this project?
                 </p>
                 <p>
-                  This also removes every annotator's submission and recorded audio
-                  for those tasks. This can't be undone.
+                  Annotators' submissions and recorded audio for those tasks are
+                  kept. This can't be undone.
                 </p>
               </div>
             </div>

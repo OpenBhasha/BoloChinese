@@ -460,15 +460,16 @@ const updateTask = async (id, data) => {
   return task;
 };
 
+// Deletes the task definition only - submissions and their audio survive,
+// so an annotator's completed work and progress are never lost this way.
 const deleteTask = async (id) => {
-  const { task, audioPublicIds } = await dao.deleteTask(id);
+  const { task } = await dao.deleteTask(id);
   if (!task) {
     const err = new Error("Task not found.");
     err.statusCode = 404;
     throw err;
   }
-  await purgeAudio(audioPublicIds);
-  logger.info(`Task hard-deleted: ${id} (${audioPublicIds.length} audio file(s) purged)`);
+  logger.info(`Task hard-deleted: ${id} (submissions/audio kept)`);
   return task;
 };
 
@@ -484,9 +485,8 @@ const deleteTasksBulk = async (projectId, { ids = [], all = false } = {}) => {
     err.statusCode = 404;
     throw err;
   }
-  const { deletedCount, audioPublicIds } = await dao.deleteTasksBulk(projectId, { ids, all });
-  await purgeAudio(audioPublicIds);
-  logger.info(`Bulk delete on project ${projectId}: removed ${deletedCount}${all ? " (all)" : `/${ids.length}`} tasks (${audioPublicIds.length} audio file(s) purged)`);
+  const { deletedCount } = await dao.deleteTasksBulk(projectId, { ids, all });
+  logger.info(`Bulk delete on project ${projectId}: removed ${deletedCount}${all ? " (all)" : `/${ids.length}`} tasks (submissions/audio kept)`);
   return { deletedCount, requestedCount: all ? deletedCount : ids.length };
 };
 

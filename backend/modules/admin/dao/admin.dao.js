@@ -244,44 +244,33 @@ const updateTask = async (id, data) => {
     .populate("assignedTo", "name email");
 };
 
-// Hard delete. Strips the id off the project's `tasks` array and drops every
-// related submission so nothing dangles. Returns the deleted task (or null)
-// plus the Cloudinary audio publicIds the caller should purge.
+// Hard delete of the task definition only. Submissions (and any recorded
+// audio) are deliberately left alone - an annotator's completed work and
+// progress must survive even after the task itself is removed from a
+// project. Just strips the id off the project's `tasks` array.
 const deleteTask = async (id) => {
   const task = await Task.findById(id);
-  if (!task) return { task: null, audioPublicIds: [] };
-
-  const audioPublicIds = await TaskSubmission.find({
-    taskId: id,
-    "audio.publicId": { $ne: null },
-  }).distinct("audio.publicId");
+  if (!task) return { task: null };
 
   await Project.findByIdAndUpdate(task.projectId, { $pull: { tasks: id } });
-  await TaskSubmission.deleteMany({ taskId: id });
   await Task.findByIdAndDelete(id);
-  return { task, audioPublicIds };
+  return { task };
 };
 
-// Bulk-delete tasks scoped to a single project. `all: true` deletes every
-// task in the project instead of an explicit id list - lets "select all" in
-// the UI skip shipping every id back to the server. Also strips the deleted
-// ids off the project's `tasks` array and drops every related submission so
-// nothing dangles. Returns the audio publicIds to purge alongside deletedCount.
+// Bulk-delete task definitions scoped to a single project. `all: true`
+// deletes every task in the project instead of an explicit id list - lets
+// "select all" in the UI skip shipping every id back to the server.
+// Submissions/audio are not touched - see deleteTask.
 const deleteTasksBulk = async (projectId, { ids = [], all = false } = {}) => {
   const taskIds = all ? await Task.find({ projectId }).distinct("_id") : ids;
-  if (!taskIds.length) return { deletedCount: 0, audioPublicIds: [] };
+  if (!taskIds.length) return { deletedCount: 0 };
 
-  const audioPublicIds = await TaskSubmission.find({
-    taskId: { $in: taskIds },
-    "audio.publicId": { $ne: null },
-  }).distinct("audio.publicId");
   const result = await Task.deleteMany({ _id: { $in: taskIds }, projectId });
-  await TaskSubmission.deleteMany({ taskId: { $in: taskIds } });
   await Project.findByIdAndUpdate(
     projectId,
     all ? { $set: { tasks: [] } } : { $pull: { tasks: { $in: taskIds } } }
   );
-  return { deletedCount: result.deletedCount || 0, audioPublicIds };
+  return { deletedCount: result.deletedCount || 0 };
 };
 
 const assignProjectToUser = async (projectId, userId, adminId) => {
@@ -761,9 +750,11 @@ const deleteTaskSubmission = async (submissionId) => {
 
 const getDashboardStats = async () => {
   // Everything below counts ACTIVE users only. Soft-deleted accounts and
-  // their submissions are excluded from every tile. Project/task deletes now
-  // cascade, so submissions are always tied to a live project - no orphan
-  // scoping needed.
+  // their submissions are excluded from every tile. Project deletes still
+  // cascade to submissions, but a single task delete deliberately doesn't
+  // (progress must survive it) - either way every remaining submission's
+  // projectId still points at a live project, so no orphan scoping needed
+  // here.
   const activeUsers = await User.find({ deletedAt: null }).select("_id isVerified identityFlagged").lean();
   const activeUserIds = activeUsers.map((u) => u._id);
 
