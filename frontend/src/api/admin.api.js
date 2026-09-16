@@ -64,11 +64,15 @@ export const uploadTasksImport = (projectId, file) => {
 export const downloadTaskTemplate = () => {
 	return api.get("/public/Template.xlsx", { responseType: "blob" });
 };
+// params: { page, limit, search }
+export const getTasksByProject = (projectId, params = {}) =>
+	api.get(`/admin/projects/${projectId}/tasks`, { params });
 export const getTaskById = (id) => api.get(`/admin/tasks/${id}`);
 export const updateTask = (id, data) => api.patch(`/admin/tasks/${id}`, data);
 export const deleteTask = (id) => api.delete(`/admin/tasks/${id}`);
-export const bulkDeleteTasks = (projectId, ids) =>
-	api.post(`/admin/projects/${projectId}/tasks/bulk-delete`, { ids });
+// payload: { ids } for an explicit selection, or { all: true } for every task in the project
+export const bulkDeleteTasks = (projectId, payload) =>
+	api.post(`/admin/projects/${projectId}/tasks/bulk-delete`, payload);
 
 // Result export (partial results allowed - no completion gate)
 export const exportProjectResults = (projectId) =>

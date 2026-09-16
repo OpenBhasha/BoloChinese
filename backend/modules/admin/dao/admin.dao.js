@@ -24,6 +24,16 @@ const zeroProgress = () => Object.fromEntries(PROGRESS_FIELDS.map((f) => [f, 0])
 const addProgress = (a = {}, b = {}) =>
   Object.fromEntries(PROGRESS_FIELDS.map((f) => [f, (a[f] || 0) + (b[f] || 0)]));
 
+// Insertion order == taskId order (both come off the same global counter).
+// Sorting on (createdAt, _id) is index-covered by {projectId,createdAt} and
+// has no TASK-9999 -> TASK-10000 lexical cliff.
+const TASK_ORDER = { createdAt: 1, _id: 1 };
+
+// Most-advanced-first, used to pick one representative status per task when a
+// project has more than one assignee (so more than one submission per task).
+const STATUS_RANK = ["completed", "corrected", "verified", "recorded", "in-progress", "discarded", "pending"];
+const STATUS_INDEX = new Map(STATUS_RANK.map((s, i) => [s, i]));
+
 // ─── Users ──────────────────────────────────────────────────────────────────
 
 // { deleted: false } = active only (default listing),
@@ -180,6 +190,50 @@ const bulkCreateTasks = async (docs) => {
   }
 };
 
+// Paginated task list for the admin Tasks tab. Sort is index-covered
+// ({projectId,createdAt}); the page's submissions are looked up in one extra
+// query to derive a per-task overallStatus - avoids the old correlated
+// per-task $lookup that made this scale with project size instead of page size.
+const getTasksByProject = async (projectId, { page = 1, limit = 20, search } = {}) => {
+  const skip = (page - 1) * limit;
+  const match = { projectId };
+  if (search) {
+    const rx = new RegExp(escapeRegex(search), "i");
+    match.$or = [{ taskId: rx }, { dialogueId: rx }, { chineseTranscript: rx }, { pinyin: rx }];
+  }
+
+  const [total, pageTasks] = await Promise.all([
+    Task.countDocuments(match),
+    Task.find(match)
+      .sort(TASK_ORDER)
+      .skip(skip)
+      .limit(limit)
+      .populate("assignedTo", "name email")
+      .lean(),
+  ]);
+
+  if (!pageTasks.length) return { tasks: [], total };
+
+  const taskIds = pageTasks.map((t) => t._id);
+  const submissions = await TaskSubmission.find({ taskId: { $in: taskIds } })
+    .select("taskId status")
+    .lean();
+
+  const bestByTask = new Map();
+  submissions.forEach(({ taskId, status }) => {
+    const key = String(taskId);
+    const rank = STATUS_INDEX.get(status) ?? STATUS_RANK.length;
+    const current = bestByTask.get(key);
+    if (!current || rank < current.rank) bestByTask.set(key, { status, rank });
+  });
+
+  const tasks = pageTasks.map((t) => ({
+    ...t,
+    overallStatus: bestByTask.get(String(t._id))?.status || "pending",
+  }));
+
+  return { tasks, total };
+};
 
 const getTaskById = async (id) => {
   return Task.findById(id).populate("assignedTo", "name email");
@@ -208,19 +262,25 @@ const deleteTask = async (id) => {
   return { task, audioPublicIds };
 };
 
-// Bulk-delete tasks scoped to a single project. Also strips their ids off
-// the project's `tasks` array and drops every related submission so nothing
-// dangles. Returns the audio publicIds to purge alongside deletedCount.
-const deleteTasksBulk = async (projectId, ids = []) => {
-  if (!ids.length) return { deletedCount: 0, audioPublicIds: [] };
-  const objectIds = ids;
+// Bulk-delete tasks scoped to a single project. `all: true` deletes every
+// task in the project instead of an explicit id list - lets "select all" in
+// the UI skip shipping every id back to the server. Also strips the deleted
+// ids off the project's `tasks` array and drops every related submission so
+// nothing dangles. Returns the audio publicIds to purge alongside deletedCount.
+const deleteTasksBulk = async (projectId, { ids = [], all = false } = {}) => {
+  const taskIds = all ? await Task.find({ projectId }).distinct("_id") : ids;
+  if (!taskIds.length) return { deletedCount: 0, audioPublicIds: [] };
+
   const audioPublicIds = await TaskSubmission.find({
-    taskId: { $in: objectIds },
+    taskId: { $in: taskIds },
     "audio.publicId": { $ne: null },
   }).distinct("audio.publicId");
-  const result = await Task.deleteMany({ _id: { $in: objectIds }, projectId });
-  await Project.findByIdAndUpdate(projectId, { $pull: { tasks: { $in: objectIds } } });
-  await TaskSubmission.deleteMany({ taskId: { $in: objectIds } });
+  const result = await Task.deleteMany({ _id: { $in: taskIds }, projectId });
+  await TaskSubmission.deleteMany({ taskId: { $in: taskIds } });
+  await Project.findByIdAndUpdate(
+    projectId,
+    all ? { $set: { tasks: [] } } : { $pull: { tasks: { $in: taskIds } } }
+  );
   return { deletedCount: result.deletedCount || 0, audioPublicIds };
 };
 
@@ -820,7 +880,7 @@ module.exports = {
   softDeleteUser, softDeleteUsersBulk,
   getUserById, getUserByEmail,
   createProject, getAllProjects, getProjectById, getProjectByName, updateProject, deleteProject,
-  createTask, addTaskToProject, addTasksToProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
+  createTask, addTaskToProject, addTasksToProject, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
   getExistingDialogueIds, bulkCreateTasks,
   assignProjectToUser,
   unassignProjectFromUser,

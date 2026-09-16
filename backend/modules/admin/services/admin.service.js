@@ -428,6 +428,17 @@ const createTask = async ({ projectId, dialogueId, chineseTranscript, pinyin, as
   return task;
 };
 
+const getTasksByProject = async (projectId, { page = 1, limit = 20, search } = {}) => {
+  const project = await dao.getProjectById(projectId);
+  if (!project) {
+    const err = new Error("Project not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  const { tasks, total } = await dao.getTasksByProject(projectId, { page, limit, search });
+  return { tasks, pagination: buildMeta(page, limit, total) };
+};
+
 const getTaskById = async (id) => {
   const task = await dao.getTaskById(id);
   if (!task) {
@@ -461,8 +472,8 @@ const deleteTask = async (id) => {
   return task;
 };
 
-const deleteTasksBulk = async (projectId, ids = []) => {
-  if (!Array.isArray(ids) || !ids.length) {
+const deleteTasksBulk = async (projectId, { ids = [], all = false } = {}) => {
+  if (!all && (!Array.isArray(ids) || !ids.length)) {
     const err = new Error("Provide at least one task id to delete.");
     err.statusCode = 400;
     throw err;
@@ -473,10 +484,10 @@ const deleteTasksBulk = async (projectId, ids = []) => {
     err.statusCode = 404;
     throw err;
   }
-  const { deletedCount, audioPublicIds } = await dao.deleteTasksBulk(projectId, ids);
+  const { deletedCount, audioPublicIds } = await dao.deleteTasksBulk(projectId, { ids, all });
   await purgeAudio(audioPublicIds);
-  logger.info(`Bulk delete on project ${projectId}: removed ${deletedCount}/${ids.length} tasks (${audioPublicIds.length} audio file(s) purged)`);
-  return { deletedCount, requestedCount: ids.length };
+  logger.info(`Bulk delete on project ${projectId}: removed ${deletedCount}${all ? " (all)" : `/${ids.length}`} tasks (${audioPublicIds.length} audio file(s) purged)`);
+  return { deletedCount, requestedCount: all ? deletedCount : ids.length };
 };
 
 const IMPORT_ROW_LIMIT = 25000;
@@ -784,5 +795,5 @@ module.exports = {
   exportResults,
   prepareStreamingExport,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
-  createTask, createTasksFromImport, getTaskById, updateTask, deleteTask, deleteTasksBulk,
+  createTask, createTasksFromImport, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
 };

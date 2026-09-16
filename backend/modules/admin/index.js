@@ -102,6 +102,12 @@ router.post(
   taskImportUpload.single("file"),
   ctrl.uploadTasksImport
 );
+// GET /projects/:projectId/tasks?page&limit&search - paginated
+router.get(
+  "/projects/:projectId/tasks",
+  [validateObjectId("projectId"), ...validatePagination, validate],
+  ctrl.getTasksByProject
+);
 router.get("/tasks/:id", [validateObjectId("id"), validate], ctrl.getTaskById);
 router.patch("/tasks/:id", [validateObjectId("id"), ...updateTaskValidator, validate], ctrl.updateTask);
 router.delete("/tasks/:id", [validateObjectId("id"), validate], ctrl.deleteTask);

@@ -2,14 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import AdminLayout from "../../components/layout/AdminLayout";
 import Modal from "../../components/ui/Modal";
-import DataTable from "datatables.net-dt";
-import "datatables.net-dt/css/dataTables.dataTables.css";
 import {
   getProjectById,
   createTask,
   updateTask,
   deleteTask,
   bulkDeleteTasks,
+  getTasksByProject,
   getTaskById,
   getTaskSubmissions,
   getProjectSubmissions,
@@ -36,11 +35,8 @@ const ADMIN_PROJECT_VIEWS = {
 
 export default function ProjectDetail() {
   const { id } = useParams();
-  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 640);
   const [project, setProject] = useState(null);
-  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  // Tasks tab was removed from the UI - default to Submissions.
   const [activeView, setActiveView] = useState(ADMIN_PROJECT_VIEWS.SUBMISSIONS);
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -58,8 +54,16 @@ export default function ProjectDetail() {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [exportingResults, setExportingResults] = useState(false);
-  const [statusFilter, setStatusFilter] = useState("all");
+  // Tasks tab: server-paginated list + selection (one/more on this page, or
+  // every task matching the project via selectAllMatching).
+  const [taskItems, setTaskItems] = useState([]);
+  const [taskPagination, setTaskPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [taskPage, setTaskPage] = useState(1);
+  const [taskSearch, setTaskSearch] = useState("");
+  const [taskSearchDebounced, setTaskSearchDebounced] = useState("");
+  const [tasksLoading, setTasksLoading] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [projectAssignees, setProjectAssignees] = useState([]);
@@ -67,18 +71,10 @@ export default function ProjectDetail() {
   const [submissionSearch, setSubmissionSearch] = useState("");
   const [submissionPage, setSubmissionPage] = useState(1);
   const excelInputRef = useRef(null);
-  const desktopTableRef = useRef(null);
-  const dataTableInstanceRef = useRef(null);
 
   const fetchProject = () => {
-    Promise.all([getProjectById(id)])
-      .then(([pr]) => {
-        // Backend no longer ships the full tasks[] array for projects with
-        // thousands of items - we drive everything off submissions +
-        // project.taskCount. Keep setTasks for legacy code paths, but empty.
-        setProject(pr.data.data);
-        setTasks([]);
-      })
+    getProjectById(id)
+      .then((pr) => setProject(pr.data.data))
       .catch(() => toast.error("Failed to load project"))
       .finally(() => setLoading(false));
   };
@@ -144,84 +140,87 @@ export default function ProjectDetail() {
   }, [project, activeView, id, submissionPage, submissionSearchDebounced]);
 
   useEffect(() => {
-    const handleResize = () => setIsDesktop(window.innerWidth >= 640);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  useEffect(() => {
     if (activeView === ADMIN_PROJECT_VIEWS.TASKS && submissionSearch) {
       setSubmissionSearch("");
     }
   }, [activeView, submissionSearch]);
 
+  // Debounce the tasks search box.
   useEffect(() => {
-    const tableElement = desktopTableRef.current;
-    if (!isDesktop) {
-      if (dataTableInstanceRef.current) {
-        dataTableInstanceRef.current.destroy();
-        dataTableInstanceRef.current = null;
-      }
-      return undefined;
+    const t = setTimeout(() => setTaskSearchDebounced(taskSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [taskSearch]);
+
+  // Reset to page 1 and drop any cross-page "select all" when the search changes.
+  useEffect(() => {
+    setTaskPage(1);
+    setSelectAllMatching(false);
+  }, [taskSearchDebounced]);
+
+  // One page of this project's tasks, server-sorted/filtered/paginated - same
+  // pattern as the Submissions tab above.
+  const fetchTasks = () => {
+    setTasksLoading(true);
+    return getTasksByProject(id, {
+      page: taskPage,
+      limit: 20,
+      search: taskSearchDebounced || undefined,
+    })
+      .then((res) => {
+        const data = res.data.data || {};
+        setTaskItems(data.tasks || []);
+        setTaskPagination(data.pagination || { page: 1, totalPages: 1, total: 0 });
+      })
+      .catch(() => {
+        setTaskItems([]);
+        setTaskPagination({ page: 1, totalPages: 1, total: 0 });
+      })
+      .finally(() => setTasksLoading(false));
+  };
+
+  useEffect(() => {
+    if (activeView !== ADMIN_PROJECT_VIEWS.TASKS) return;
+    if (!project) return;
+    if ((project.taskCount || 0) === 0) {
+      setTaskItems([]);
+      setTaskPagination({ page: 1, totalPages: 1, total: 0 });
+      return;
     }
+    fetchTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, activeView, id, taskPage, taskSearchDebounced]);
 
-    if (activeView !== ADMIN_PROJECT_VIEWS.TASKS) {
-      if (dataTableInstanceRef.current) {
-        dataTableInstanceRef.current.destroy();
-        dataTableInstanceRef.current = null;
-      }
-      return undefined;
-    }
+  // Selection never survives a page/search change - re-pick per page instead
+  // of trying to track ids across server-paginated results.
+  useEffect(() => {
+    setSelectedTaskIds(new Set());
+    setSelectAllMatching(false);
+  }, [taskPage, taskSearchDebounced]);
 
-    if (loading || !tableElement) return undefined;
+  const allOnPageSelected = taskItems.length > 0 && taskItems.every((t) => selectedTaskIds.has(t._id));
+  const selectedCount = selectAllMatching ? taskPagination.total : selectedTaskIds.size;
 
-    if (!tasks.length) {
-      if (dataTableInstanceRef.current) {
-        dataTableInstanceRef.current.destroy();
-        dataTableInstanceRef.current = null;
-      }
-      return undefined;
-    }
-
-    if (dataTableInstanceRef.current) {
-      dataTableInstanceRef.current.destroy();
-      dataTableInstanceRef.current = null;
-    }
-
-    dataTableInstanceRef.current = new DataTable(tableElement, {
-      pageLength: 10,
-      lengthMenu: [10, 25, 50, 100],
-      order: [[1, "asc"]],
-      autoWidth: false,
-      responsive: false,
-      language: {
-        search: "Search:",
-        lengthMenu: "_MENU_ entries per page",
-        paginate: {
-          previous: "Prev",
-          next: "Next",
-        },
-        emptyTable: "No tasks available",
-      },
-      columnDefs: [
-        { targets: 0, orderable: false, searchable: false }, // checkbox
-        { targets: -1, orderable: false, searchable: false }, // action
-      ],
-      dom: '<"dt-toolbar"lf>rt<"dt-footer"ip>',
+  const toggleSelectTask = (taskId) => {
+    if (selectAllMatching) return;
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
+      return next;
     });
+  };
 
-    return () => {
-      if (dataTableInstanceRef.current) {
-        dataTableInstanceRef.current.destroy();
-        dataTableInstanceRef.current = null;
+  const toggleSelectAllOnPage = () => {
+    setSelectAllMatching(false);
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) {
+        taskItems.forEach((t) => next.delete(t._id));
+      } else {
+        taskItems.forEach((t) => next.add(t._id));
       }
-    };
-  }, [
-    isDesktop,
-    loading,
-    tasks,
-    activeView,
-  ]);
+      return next;
+    });
+  };
 
   const openEdit = (t) => {
     setForm({ dialogueId: t.dialogueId, chineseTranscript: t.chineseTranscript, pinyin: t.pinyin, assignedTo: t.assignedTo?._id || "" });
@@ -306,56 +305,6 @@ export default function ProjectDetail() {
     }
   }, [activeView]);
 
-  const displayedTasks = useMemo(() => {
-    if (statusFilter === "all") return tasks;
-    return tasks.filter((t) => (t.overallStatus || "pending") === statusFilter);
-  }, [tasks, statusFilter]);
-
-  // Counts per status - lets the filter chips show live badges.
-  const statusCounts = useMemo(() => {
-    const counts = { all: tasks.length };
-    tasks.forEach((t) => {
-      const s = t.overallStatus || "pending";
-      counts[s] = (counts[s] || 0) + 1;
-    });
-    return counts;
-  }, [tasks]);
-
-  // Clear any selected ids that are no longer visible after a filter change,
-  // and drop stale ids after tasks refetch.
-  useEffect(() => {
-    setSelectedTaskIds((prev) => {
-      const visibleIds = new Set(displayedTasks.map((t) => t._id));
-      const next = new Set();
-      prev.forEach((id) => { if (visibleIds.has(id)) next.add(id); });
-      return next.size === prev.size ? prev : next;
-    });
-  }, [displayedTasks]);
-
-  const allDisplayedSelected =
-    displayedTasks.length > 0 && displayedTasks.every((t) => selectedTaskIds.has(t._id));
-
-  const toggleSelectTask = (id) => {
-    setSelectedTaskIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    setSelectedTaskIds((prev) => {
-      if (allDisplayedSelected) {
-        const next = new Set(prev);
-        displayedTasks.forEach((t) => next.delete(t._id));
-        return next;
-      }
-      const next = new Set(prev);
-      displayedTasks.forEach((t) => next.add(t._id));
-      return next;
-    });
-  };
-
   // Load assignees when the Users tab opens.
   useEffect(() => {
     if (activeView !== ADMIN_PROJECT_VIEWS.USERS) return;
@@ -369,10 +318,15 @@ export default function ProjectDetail() {
   }, [activeView, id]);
 
   // After a project-level reset: refetch the header (taskCount) and, if the
-  // Users tab is open, its assignee stats too. The Submissions list effect
+  // Tasks or Users tab is open, its own list too. The Submissions list effect
   // already re-runs on its own once `project` changes.
   const handleProjectReset = async () => {
     fetchProject();
+    if (activeView === ADMIN_PROJECT_VIEWS.TASKS) {
+      setSelectedTaskIds(new Set());
+      setSelectAllMatching(false);
+      setTaskPage(1);
+    }
     if (activeView === ADMIN_PROJECT_VIEWS.USERS) {
       setAssigneesLoading(true);
       try {
@@ -387,17 +341,17 @@ export default function ProjectDetail() {
   };
 
   const runBulkDelete = async () => {
-    const ids = Array.from(selectedTaskIds);
-    if (!ids.length) return;
+    if (!selectedCount) return;
     setBulkDeleting(true);
     try {
-      const res = await bulkDeleteTasks(id, ids);
+      const payload = selectAllMatching ? { all: true } : { ids: Array.from(selectedTaskIds) };
+      const res = await bulkDeleteTasks(id, payload);
       toast.success(`Deleted ${res.data.data.deletedCount} task(s).`);
       setSelectedTaskIds(new Set());
+      setSelectAllMatching(false);
       setConfirmBulkDelete(false);
-      // Refresh the project (its taskCount changes after bulk delete).
-      const pr = await getProjectById(id);
-      setProject(pr.data.data);
+      fetchProject();
+      await fetchTasks(); // re-pull this page with the current filters
     } catch (err) {
       toast.error(err.response?.data?.message || "Bulk delete failed.");
     } finally {
@@ -416,7 +370,9 @@ export default function ProjectDetail() {
 
       if (editing) { await updateTask(editing._id, cleanForm); toast.success("Task updated!"); }
       else { await createTask(id, cleanForm); toast.success("Task created!"); }
-      setModal(null); fetchProject();
+      setModal(null);
+      fetchProject();
+      fetchTasks();
     } catch (err) {
       const errs = err.response?.data?.errors;
       if (errs) errs.forEach((e) => toast.error(e.message));
@@ -426,8 +382,14 @@ export default function ProjectDetail() {
 
   const handleDelete = async (tid) => {
     if (!confirm("Delete this task?")) return;
-    try { await deleteTask(tid); toast.success("Task deleted"); fetchProject(); }
-    catch { toast.error("Delete failed"); }
+    try {
+      await deleteTask(tid);
+      toast.success("Task deleted");
+      fetchProject();
+      fetchTasks();
+    } catch {
+      toast.error("Delete failed");
+    }
   };
 
   const handleDeleteSubmission = async (taskId, submission) => {
@@ -518,13 +480,12 @@ export default function ProjectDetail() {
   };
 
   const handleViewChange = (nextView) => {
-    if (dataTableInstanceRef.current) {
-      dataTableInstanceRef.current.destroy();
-      dataTableInstanceRef.current = null;
-    }
     setActiveView(nextView);
     if (nextView === ADMIN_PROJECT_VIEWS.SUBMISSIONS) {
       setSubmissionPage(1);
+    }
+    if (nextView === ADMIN_PROJECT_VIEWS.TASKS) {
+      setTaskPage(1);
     }
   };
 
@@ -543,6 +504,17 @@ export default function ProjectDetail() {
             </div>
             <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end w-full md:w-auto">
               <div className="inline-flex rounded-lg border border-[#c3cdc0] bg-white p-1 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => handleViewChange(ADMIN_PROJECT_VIEWS.TASKS)}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-md border border-transparent transition ${
+                    activeView === ADMIN_PROJECT_VIEWS.TASKS
+                      ? "bg-[#dbe7d8] text-black border-[#b9c8b3]"
+                      : "bg-transparent text-black hover:bg-[#eef4ec]"
+                  }`}
+                >
+                  Tasks
+                </button>
                 <button
                   type="button"
                   onClick={() => handleViewChange(ADMIN_PROJECT_VIEWS.SUBMISSIONS)}
@@ -603,7 +575,46 @@ export default function ProjectDetail() {
 
           <ProjectResetDangerZone projectId={id} projectName={project?.name} onReset={handleProjectReset} />
 
-          {activeView !== ADMIN_PROJECT_VIEWS.TASKS && (
+          {activeView === ADMIN_PROJECT_VIEWS.TASKS ? (
+            <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
+              <div className="text-xs text-black/60">
+                {selectAllMatching ? (
+                  <span className="font-semibold text-red-700">
+                    All {taskPagination.total} task{taskPagination.total === 1 ? "" : "s"} in this project selected.{" "}
+                    <button type="button" className="underline" onClick={() => { setSelectAllMatching(false); setSelectedTaskIds(new Set()); }}>
+                      Clear selection
+                    </button>
+                  </span>
+                ) : selectedTaskIds.size > 0 && allOnPageSelected && taskPagination.total > taskItems.length ? (
+                  <span>
+                    All {taskItems.length} tasks on this page are selected.{" "}
+                    <button type="button" className="underline text-primary-800" onClick={() => setSelectAllMatching(true)}>
+                      Select all {taskPagination.total} tasks in this project
+                    </button>
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2 ml-auto">
+                {selectedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmBulkDelete(true)}
+                    disabled={bulkDeleting}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
+                  >
+                    <Trash2 size={12} /> Delete {selectedCount === taskPagination.total ? "all" : selectedCount}
+                  </button>
+                )}
+                <input
+                  type="text"
+                  value={taskSearch}
+                  onChange={(e) => setTaskSearch(e.target.value)}
+                  placeholder="Search tasks…"
+                  className="input w-full sm:w-64"
+                />
+              </div>
+            </div>
+          ) : activeView === ADMIN_PROJECT_VIEWS.SUBMISSIONS ? (
             <div className="mb-3 flex justify-end">
               <input
                 type="text"
@@ -613,92 +624,74 @@ export default function ProjectDetail() {
                 className="input w-full sm:w-64"
               />
             </div>
-          )}
+          ) : null}
 
           <div className="admin-datatable card p-0 overflow-hidden border border-[#c3cdc0] shadow-sm">
             <div className="sm:hidden divide-y divide-[#d2dad0]">
               {activeView === ADMIN_PROJECT_VIEWS.TASKS ? (
                 <>
-                  {/* Mobile filter chips + bulk delete */}
-                  <div className="p-3 flex flex-wrap gap-1.5 bg-primary-50/40 border-b border-[#d2dad0]">
-                    {[
-                      { key: "all", label: "All" },
-                      { key: "pending", label: "Pending" },
-                      { key: "in-progress", label: "In progress" },
-                      { key: "verified", label: "Verified" },
-                      { key: "corrected", label: "Corrected" },
-                      { key: "completed", label: "Completed" },
-                      { key: "discarded", label: "Discarded" },
-                    ].map((f) => (
-                      <button
-                        key={f.key}
-                        type="button"
-                        onClick={() => setStatusFilter(f.key)}
-                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
-                          statusFilter === f.key
-                            ? "bg-primary-700 text-white"
-                            : "bg-white border border-primary-100 text-primary-800"
-                        }`}
-                      >
-                        {f.label} {statusCounts[f.key] || 0}
-                      </button>
-                    ))}
-                    {selectedTaskIds.size > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmBulkDelete(true)}
-                        className="ml-auto px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-red-600 text-white inline-flex items-center gap-1"
-                      >
-                        <Trash2 size={12} /> {selectedTaskIds.size}
-                      </button>
-                    )}
-                  </div>
-                  {displayedTasks.map((t) => (
-                    <div key={t._id} className={`p-4 space-y-2 hover:bg-primary-50/70 transition ${selectedTaskIds.has(t._id) ? "bg-primary-50" : ""}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            aria-label={`Select task ${t.taskId}`}
-                            checked={selectedTaskIds.has(t._id)}
-                            onChange={() => toggleSelectTask(t._id)}
-                          />
-                          <span className="font-mono text-xs text-primary-700 bg-primary-100 px-2 py-0.5 rounded truncate">{t.taskId}</span>
-                          <span className="text-[10px] capitalize text-black/60">{t.overallStatus || "pending"}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => openSubmission(t._id)}
-                          className="text-[11px] text-primary-800 hover:text-primary-900"
-                        >
-                          Details
-                        </button>
-                      </div>
-                      <p className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-2 py-0.5 rounded w-fit">{t.dialogueId}</p>
-                      <p className="text-xs text-black/80 line-clamp-2">{t.chineseTranscript}</p>
-                      <div className="flex justify-end gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(t)}
-                          className="px-2 py-1.5 rounded bg-[#dbe7d8] text-black hover:bg-[#c7d7c4] transition text-[11px] font-semibold inline-flex items-center gap-1"
-                        >
-                          <Pencil size={13} /> Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(t._id)}
-                          className="px-2 py-1.5 rounded hover:bg-red-100 text-black/70 hover:text-red-700 transition text-[11px] font-semibold inline-flex items-center gap-1"
-                        >
-                          <Trash2 size={13} /> Delete
-                        </button>
-                      </div>
+                  {tasksLoading && !taskItems.length ? (
+                    <div className="px-4 py-12 text-center text-black/60 space-y-3">
+                      <Spinner />
+                      <p className="text-sm">Loading tasks…</p>
                     </div>
-                  ))}
-                  {!displayedTasks.length && (
+                  ) : taskItems.length ? (
+                    taskItems.map((t) => (
+                      <div key={t._id} className={`p-4 space-y-2 hover:bg-primary-50/70 transition ${selectedTaskIds.has(t._id) || selectAllMatching ? "bg-primary-50" : ""}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select task ${t.taskId}`}
+                              checked={selectAllMatching || selectedTaskIds.has(t._id)}
+                              disabled={selectAllMatching}
+                              onChange={() => toggleSelectTask(t._id)}
+                            />
+                            <span className="font-mono text-xs text-primary-700 bg-primary-100 px-2 py-0.5 rounded truncate">{t.taskId}</span>
+                            <span className="text-[10px] capitalize text-black/60">{t.overallStatus || "pending"}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openSubmission(t._id)}
+                            className="text-[11px] text-primary-800 hover:text-primary-900"
+                          >
+                            Details
+                          </button>
+                        </div>
+                        <p className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-2 py-0.5 rounded w-fit">{t.dialogueId}</p>
+                        <p className="text-xs text-black/80 line-clamp-2">{t.chineseTranscript}</p>
+                        <div className="flex justify-end gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(t)}
+                            className="px-2 py-1.5 rounded bg-[#dbe7d8] text-black hover:bg-[#c7d7c4] transition text-[11px] font-semibold inline-flex items-center gap-1"
+                          >
+                            <Pencil size={13} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(t._id)}
+                            className="px-2 py-1.5 rounded hover:bg-red-100 text-black/70 hover:text-red-700 transition text-[11px] font-semibold inline-flex items-center gap-1"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
                     <div className="px-4 py-12 text-center text-black/60">
                       <Mic2 size={32} className="mx-auto mb-2 opacity-30" />
-                      No tasks match this filter.
+                      {taskSearchDebounced ? "No tasks match your search." : "No tasks yet."}
                     </div>
+                  )}
+                  {taskPagination.totalPages > 1 && (
+                    <PaginationControls
+                      currentPage={taskPagination.page || 1}
+                      totalPages={taskPagination.totalPages || 1}
+                      onPrev={() => setTaskPage((prev) => Math.max(1, prev - 1))}
+                      onNext={() => setTaskPage((prev) => Math.min(taskPagination.totalPages, prev + 1))}
+                      className="bg-white"
+                    />
                   )}
                 </>
               ) : activeView === ADMIN_PROJECT_VIEWS.SUBMISSIONS ? (
@@ -795,65 +788,16 @@ export default function ProjectDetail() {
             <div className="hidden sm:block">
               {activeView === ADMIN_PROJECT_VIEWS.TASKS ? (
                 <>
-                  {/* Filter chips + bulk-delete toolbar */}
-                  <div className="flex flex-wrap items-center gap-2 mb-5 pb-4 border-b border-primary-100/70">
-                    {[
-                      { key: "all", label: "All" },
-                      { key: "pending", label: "Pending" },
-                      { key: "in-progress", label: "In progress" },
-                      { key: "verified", label: "Verified" },
-                      { key: "corrected", label: "Corrected" },
-                      { key: "completed", label: "Completed" },
-                      { key: "discarded", label: "Discarded" },
-                    ].map((f) => {
-                      const count = statusCounts[f.key] || 0;
-                      const isActive = statusFilter === f.key;
-                      return (
-                        <button
-                          key={f.key}
-                          type="button"
-                          onClick={() => setStatusFilter(f.key)}
-                          className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition whitespace-nowrap ${
-                            isActive
-                              ? "bg-primary-700 border-primary-700 text-white shadow-sm"
-                              : "bg-white border-primary-200 text-primary-800 hover:bg-primary-50 hover:border-primary-400"
-                          }`}
-                        >
-                          <span>{f.label}</span>
-                          <span
-                            className={`inline-flex items-center justify-center min-w-[20px] h-5 rounded-full text-[10px] font-bold px-1.5 ${
-                              isActive ? "bg-white/25 text-white" : "bg-primary-100 text-primary-800"
-                            }`}
-                          >
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-
-                    <div className="grow" />
-
-                    {selectedTaskIds.size > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmBulkDelete(true)}
-                        disabled={bulkDeleting}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
-                      >
-                        <Trash2 size={12} /> Delete selected ({selectedTaskIds.size})
-                      </button>
-                    )}
-                  </div>
-
-                  <table ref={desktopTableRef} className="w-full text-sm table-fixed display">
+                  <table className="w-full text-sm table-fixed">
                     <thead>
                       <tr className="border-b border-[#d2dad0] bg-primary-50/70">
                         <th className="text-left px-2 py-3 w-[5%]">
                           <input
                             type="checkbox"
-                            aria-label="Select all visible tasks"
-                            checked={allDisplayedSelected}
-                            onChange={toggleSelectAll}
+                            aria-label="Select all tasks on this page"
+                            checked={selectAllMatching || allOnPageSelected}
+                            disabled={selectAllMatching}
+                            onChange={toggleSelectAllOnPage}
                           />
                         </th>
                         <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[13%]">Task ID</th>
@@ -864,60 +808,78 @@ export default function ProjectDetail() {
                       </tr>
                     </thead>
                     <tbody>
-                      {displayedTasks.map((t) => (
-                        <tr key={t._id} className={`border-b border-[#d8e0d5] hover:bg-primary-50/60 transition ${selectedTaskIds.has(t._id) ? "bg-primary-50" : ""}`}>
-                          <td className="px-2 py-3.5 w-[5%]">
-                            <input
-                              type="checkbox"
-                              aria-label={`Select task ${t.taskId}`}
-                              checked={selectedTaskIds.has(t._id)}
-                              onChange={() => toggleSelectTask(t._id)}
-                            />
-                          </td>
-                          <td className="px-2 py-3.5 w-[13%]">
-                            <span className="font-mono text-xs text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded block truncate">{t.taskId}</span>
-                          </td>
-                          <td className="px-2 py-3.5 w-[17%]">
-                            <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{t.dialogueId}</span>
-                          </td>
-                          <td className="px-2 py-3.5 w-[38%]">
-                            <div className="text-black/80 text-xs truncate" title={t.chineseTranscript}>{t.chineseTranscript}</div>
-                          </td>
-                          <td className="px-2 py-3.5 w-[12%]">
-                            <span className="text-[11px] capitalize text-black/75">{t.overallStatus || "pending"}</span>
-                          </td>
-                          <td className="px-2 py-3.5 w-[15%]">
-                            <div className="flex justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() => openEdit(t)}
-                                className="px-2 py-1 rounded bg-[#dbe7d8] text-black hover:bg-[#c7d7c4] transition text-[11px] font-semibold inline-flex items-center gap-1"
-                                title="Edit task"
-                              >
-                                <Pencil size={12} /> Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(t._id)}
-                                className="px-2 py-1 rounded border border-transparent hover:bg-red-100 text-black/70 hover:text-red-700 transition text-[11px] font-semibold inline-flex items-center gap-1"
-                                title="Delete task"
-                              >
-                                <Trash2 size={12} /> Delete
-                              </button>
-                            </div>
+                      {tasksLoading && !taskItems.length ? (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-10 text-center text-black/60">
+                            <Spinner />
+                            <p className="mt-2 text-sm">Loading tasks…</p>
                           </td>
                         </tr>
-                      ))}
-                      {!displayedTasks.length && (
+                      ) : taskItems.length ? (
+                        taskItems.map((t) => (
+                          <tr key={t._id} className={`border-b border-[#d8e0d5] hover:bg-primary-50/60 transition ${selectAllMatching || selectedTaskIds.has(t._id) ? "bg-primary-50" : ""}`}>
+                            <td className="px-2 py-3.5 w-[5%]">
+                              <input
+                                type="checkbox"
+                                aria-label={`Select task ${t.taskId}`}
+                                checked={selectAllMatching || selectedTaskIds.has(t._id)}
+                                disabled={selectAllMatching}
+                                onChange={() => toggleSelectTask(t._id)}
+                              />
+                            </td>
+                            <td className="px-2 py-3.5 w-[13%]">
+                              <span className="font-mono text-xs text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded block truncate">{t.taskId}</span>
+                            </td>
+                            <td className="px-2 py-3.5 w-[17%]">
+                              <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{t.dialogueId}</span>
+                            </td>
+                            <td className="px-2 py-3.5 w-[38%]">
+                              <div className="text-black/80 text-xs truncate" title={t.chineseTranscript}>{t.chineseTranscript}</div>
+                            </td>
+                            <td className="px-2 py-3.5 w-[12%]">
+                              <span className="text-[11px] capitalize text-black/75">{t.overallStatus || "pending"}</span>
+                            </td>
+                            <td className="px-2 py-3.5 w-[15%]">
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => openEdit(t)}
+                                  className="px-2 py-1 rounded bg-[#dbe7d8] text-black hover:bg-[#c7d7c4] transition text-[11px] font-semibold inline-flex items-center gap-1"
+                                  title="Edit task"
+                                >
+                                  <Pencil size={12} /> Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(t._id)}
+                                  className="px-2 py-1 rounded border border-transparent hover:bg-red-100 text-black/70 hover:text-red-700 transition text-[11px] font-semibold inline-flex items-center gap-1"
+                                  title="Delete task"
+                                >
+                                  <Trash2 size={12} /> Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
                         <tr>
                           <td colSpan={6} className="px-4 py-12 text-center text-black/60">
                             <Mic2 size={32} className="mx-auto mb-2 opacity-30" />
-                            No tasks yet. Add your first task.
+                            {taskSearchDebounced ? "No tasks match your search." : "No tasks yet."}
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
+                  {taskPagination.totalPages > 1 && (
+                    <PaginationControls
+                      currentPage={taskPagination.page || 1}
+                      totalPages={taskPagination.totalPages || 1}
+                      onPrev={() => setTaskPage((prev) => Math.max(1, prev - 1))}
+                      onNext={() => setTaskPage((prev) => Math.min(taskPagination.totalPages, prev + 1))}
+                      className="bg-[#f6f9f3]"
+                    />
+                  )}
                 </>
               ) : activeView === ADMIN_PROJECT_VIEWS.SUBMISSIONS ? (
                 <>
@@ -1079,7 +1041,7 @@ export default function ProjectDetail() {
 
       {confirmBulkDelete && (
         <Modal
-          title="Delete selected tasks"
+          title={selectAllMatching ? "Delete every task in this project" : "Delete selected tasks"}
           onClose={() => !bulkDeleting && setConfirmBulkDelete(false)}
           size="md"
         >
@@ -1090,7 +1052,9 @@ export default function ProjectDetail() {
               </div>
               <div className="text-sm text-black/80">
                 <p className="font-medium mb-1">
-                  Delete {selectedTaskIds.size} task{selectedTaskIds.size === 1 ? "" : "s"}?
+                  {selectAllMatching
+                    ? `Delete all ${selectedCount} task${selectedCount === 1 ? "" : "s"} in this project?`
+                    : `Delete ${selectedCount} task${selectedCount === 1 ? "" : "s"}?`}
                 </p>
                 <p>
                   This also removes every annotator's submission and recorded audio
@@ -1113,7 +1077,7 @@ export default function ProjectDetail() {
                 onClick={runBulkDelete}
                 disabled={bulkDeleting}
               >
-                {bulkDeleting ? "Deleting…" : `Delete ${selectedTaskIds.size}`}
+                {bulkDeleting ? "Deleting…" : `Delete ${selectedCount}`}
               </button>
             </div>
           </div>

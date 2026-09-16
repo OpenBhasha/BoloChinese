@@ -308,6 +308,21 @@ const uploadTasksImport = async (req, res, next) => {
   }
 };
 
+const getTasksByProject = async (req, res, next) => {
+  try {
+    const { page, limit } = parsePagination(req.query);
+    const data = await svc.getTasksByProject(req.params.projectId, {
+      page,
+      limit,
+      search: req.query.search?.trim() || undefined,
+    });
+    return successResponse(res, "Tasks retrieved.", data);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 const getTaskById = async (req, res, next) => {
   try {
     const task = await svc.getTaskById(req.params.id);
@@ -330,7 +345,8 @@ const updateTask = async (req, res, next) => {
 
 const deleteTasksBulk = async (req, res, next) => {
   try {
-    const result = await svc.deleteTasksBulk(req.params.projectId, req.body?.ids || []);
+    const all = req.body?.all === true;
+    const result = await svc.deleteTasksBulk(req.params.projectId, { ids: req.body?.ids || [], all });
     return successResponse(res, `${result.deletedCount} task(s) deleted.`, result);
   } catch (err) {
     if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
@@ -480,7 +496,7 @@ module.exports = {
   getUserProfile,
   getAssignedProjectIdsByUser,
   createProject, getAllProjects, getProjectById, updateProject, deleteProject,
-  createTask, uploadTasksImport, getTaskById, updateTask, deleteTask, deleteTasksBulk,
+  createTask, uploadTasksImport, getTasksByProject, getTaskById, updateTask, deleteTask, deleteTasksBulk,
   getTaskSubmissions,
   getSubmissionsByProject,
   streamSubmissionAudio,
