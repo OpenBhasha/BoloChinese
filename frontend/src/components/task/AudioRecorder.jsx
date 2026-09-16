@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Mic, Play, Pause, RotateCcw, Send } from "lucide-react";
 import { streamAudio, uploadAudio } from "../../api/user.api";
 import { createPcmRecorder } from "../../utils/wavRecorder";
+import Modal from "../ui/Modal";
 import toast from "react-hot-toast";
 
 const formatTime = (seconds) => {
@@ -47,6 +48,8 @@ export default function AudioRecorder({
   const [currentTime, setCurrentTime] = useState(0);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  // Asked right after a recording finishes, before it's sent anywhere.
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -98,6 +101,7 @@ export default function AudioRecorder({
         setAudioBlob(null);
         setPlaying(false);
         setCurrentTime(0);
+        setConfirmOpen(false);
       }
     })();
 
@@ -163,6 +167,11 @@ export default function AudioRecorder({
         });
         setPlaying(false);
         setCurrentTime(0);
+        // Ask right away - Yes submits and moves on, No discards and lets
+        // them record again. Dismissing the popup (Escape / backdrop) just
+        // leaves the Retry / Submit & Next buttons for a manual decision,
+        // e.g. after listening back first.
+        setConfirmOpen(true);
       } else {
         toast.error("Recording was empty. Please try again.");
       }
@@ -255,6 +264,17 @@ export default function AudioRecorder({
     setPlaying(false);
     setCurrentTime(0);
     setDuration(0);
+    setConfirmOpen(false);
+  };
+
+  // "Are you sure you want to submit?" - shown as soon as a recording finishes.
+  const handleConfirmSubmit = () => {
+    setConfirmOpen(false);
+    handleSubmitAndNext();
+  };
+  const handleConfirmRetry = () => {
+    setConfirmOpen(false);
+    handleRetry();
   };
 
   const togglePlayback = async () => {
@@ -313,57 +333,86 @@ export default function AudioRecorder({
   };
 
   return (
-    <div className="rounded-xl bg-primary-700 px-3 py-2 flex flex-col gap-2">
-      {/* Row 1: playback strip (only when audio is available - fresh or stored). */}
-      {(hasStoredAudio || audioBlob) && (
-        <>
-          <audio
-            ref={audioRef}
-            src={audioUrl || undefined}
-            onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
-            onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
-            onEnded={() => setPlaying(false)}
-            className="hidden"
-          />
-          <div className="flex items-center gap-2 w-full">
-            <button
-              type="button"
-              onClick={togglePlayback}
-              className="recorder-btn-label shrink-0"
-              aria-label={playing ? "Pause audio" : "Play audio"}
-            >
-              {playing ? <Pause size={20} /> : <Play size={20} />}
-            </button>
-            <input
-              type="range"
-              min="0"
-              max={duration || 0}
-              step="0.01"
-              value={currentTime}
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                if (!audioRef.current) return;
-                audioRef.current.currentTime = value;
-                setCurrentTime(value);
-              }}
-              className="flex-1 accent-white"
+    <>
+      <div className="rounded-xl bg-primary-700 px-3 py-2 flex flex-col gap-2">
+        {/* Row 1: playback strip (only when audio is available - fresh or stored). */}
+        {(hasStoredAudio || audioBlob) && (
+          <>
+            <audio
+              ref={audioRef}
+              src={audioUrl || undefined}
+              onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+              onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
+              onEnded={() => setPlaying(false)}
+              className="hidden"
             />
-            <span className="recorder-btn-label text-[11px] min-w-[64px] text-right shrink-0">
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </span>
-          </div>
-        </>
-      )}
-
-      {/* Row 2: recording timer + action buttons (mic / Retry + Submit & Next). */}
-      <div className="flex items-center justify-center gap-4">
-        {recording && (
-          <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">
-            {formatTime(recordingElapsed)}
-          </span>
+            <div className="flex items-center gap-2 w-full">
+              <button
+                type="button"
+                onClick={togglePlayback}
+                className="recorder-btn-label shrink-0"
+                aria-label={playing ? "Pause audio" : "Play audio"}
+              >
+                {playing ? <Pause size={20} /> : <Play size={20} />}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max={duration || 0}
+                step="0.01"
+                value={currentTime}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  if (!audioRef.current) return;
+                  audioRef.current.currentTime = value;
+                  setCurrentTime(value);
+                }}
+                className="flex-1 accent-white"
+              />
+              <span className="recorder-btn-label text-[11px] min-w-[64px] text-right shrink-0">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+            </div>
+          </>
         )}
-        {!readOnly && renderActions()}
+
+        {/* Row 2: recording timer + action buttons (mic / Retry + Submit & Next). */}
+        <div className="flex items-center justify-center gap-4">
+          {recording && (
+            <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">
+              {formatTime(recordingElapsed)}
+            </span>
+          )}
+          {!readOnly && renderActions()}
+        </div>
       </div>
-    </div>
+
+      {confirmOpen && !readOnly && (
+        <Modal title="Submit this recording?" size="sm" onClose={() => setConfirmOpen(false)}>
+          <div className="space-y-4">
+            <p className="text-sm text-black/80">
+              Are you sure you want to submit? Play it back below first if you want to check it.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleConfirmRetry}
+                className="btn-secondary inline-flex items-center gap-1.5"
+              >
+                <RotateCcw size={16} /> No, record again
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSubmit}
+                disabled={submitting}
+                className="bg-emerald-500 hover:bg-emerald-600 !text-white px-4 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-60 inline-flex items-center gap-1.5"
+              >
+                <Send size={16} /> Yes, submit{nextTask ? " & next" : ""}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
