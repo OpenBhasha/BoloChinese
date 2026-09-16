@@ -349,23 +349,43 @@ export default function AudioRecorder({
       );
     }
 
+    if (recording) {
+      return (
+        <button
+          type="button"
+          onClick={stopRecording}
+          className="w-12 h-12 rounded-full flex items-center justify-center shadow transition bg-red-500 animate-pulse"
+          aria-label="Stop recording"
+        >
+          {renderRecordingWave()}
+        </button>
+      );
+    }
+
     // Coming back to a task that already has submitted audio - the mic
-    // control doubles as "record again", so it reads as Retry rather than a
-    // fresh Start Recording.
-    const isRetake = hasStoredAudio && !recording;
+    // control doubles as "record again", so it reads (and is labelled) as
+    // Retry rather than a fresh Start Recording.
+    if (hasStoredAudio) {
+      return (
+        <button
+          type="button"
+          onClick={startRecording}
+          className="inline-flex items-center gap-1.5 rounded-full bg-white text-primary-700 px-3 h-10 text-sm font-semibold shadow"
+          aria-label="Retry recording"
+        >
+          <RotateCcw size={16} /> Retry
+        </button>
+      );
+    }
 
     return (
       <button
         type="button"
-        onClick={recording ? stopRecording : startRecording}
-        className={`w-12 h-12 rounded-full flex items-center justify-center shadow transition ${recording ? "bg-red-500 animate-pulse" : "bg-white"}`}
-        aria-label={recording ? "Stop recording" : isRetake ? "Retry recording" : "Start recording"}
+        onClick={startRecording}
+        className="w-12 h-12 rounded-full flex items-center justify-center shadow transition bg-white"
+        aria-label="Start recording"
       >
-        {recording
-          ? renderRecordingWave()
-          : isRetake
-            ? <RotateCcw size={22} className="text-primary-700" />
-            : <Mic size={22} className="text-primary-700" />}
+        <Mic size={22} className="text-primary-700" />
       </button>
     );
   };
