@@ -22,7 +22,6 @@ import {
 import { Plus, Trash2, Pencil, ChevronLeft, Mic2, FileAudio, FileText, User2, CalendarClock, Upload, Download, FileDown } from "lucide-react";
 import { PageSpinner, Spinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
-import ProjectResetDangerZone from "../../components/admin/ProjectResetDangerZone";
 import { formatDateTime, formatFileSize, downloadBlob } from "../../utils/format";
 import toast from "react-hot-toast";
 
@@ -54,18 +53,15 @@ export default function ProjectDetail() {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [exportingResults, setExportingResults] = useState(false);
-  // Tasks tab: server-paginated list + selection (one/more on this page, or
-  // every task matching the project via selectAllMatching).
+  // Tasks tab: server-paginated list.
   const [taskItems, setTaskItems] = useState([]);
   const [taskPagination, setTaskPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [taskPage, setTaskPage] = useState(1);
   const [taskSearch, setTaskSearch] = useState("");
   const [taskSearchDebounced, setTaskSearchDebounced] = useState("");
   const [tasksLoading, setTasksLoading] = useState(false);
-  const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
-  const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
-  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [projectAssignees, setProjectAssignees] = useState([]);
   const [assigneesLoading, setAssigneesLoading] = useState(false);
   const [submissionSearch, setSubmissionSearch] = useState("");
@@ -151,11 +147,8 @@ export default function ProjectDetail() {
     return () => clearTimeout(t);
   }, [taskSearch]);
 
-  // Reset to page 1 and drop any cross-page "select all" when the search changes.
-  useEffect(() => {
-    setTaskPage(1);
-    setSelectAllMatching(false);
-  }, [taskSearchDebounced]);
+  // Reset to page 1 when the search changes.
+  useEffect(() => { setTaskPage(1); }, [taskSearchDebounced]);
 
   // One page of this project's tasks, server-sorted/filtered/paginated - same
   // pattern as the Submissions tab above.
@@ -189,38 +182,6 @@ export default function ProjectDetail() {
     fetchTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, activeView, id, taskPage, taskSearchDebounced]);
-
-  // Selection never survives a page/search change - re-pick per page instead
-  // of trying to track ids across server-paginated results.
-  useEffect(() => {
-    setSelectedTaskIds(new Set());
-    setSelectAllMatching(false);
-  }, [taskPage, taskSearchDebounced]);
-
-  const allOnPageSelected = taskItems.length > 0 && taskItems.every((t) => selectedTaskIds.has(t._id));
-  const selectedCount = selectAllMatching ? taskPagination.total : selectedTaskIds.size;
-
-  const toggleSelectTask = (taskId) => {
-    if (selectAllMatching) return;
-    setSelectedTaskIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
-      return next;
-    });
-  };
-
-  const toggleSelectAllOnPage = () => {
-    setSelectAllMatching(false);
-    setSelectedTaskIds((prev) => {
-      const next = new Set(prev);
-      if (allOnPageSelected) {
-        taskItems.forEach((t) => next.delete(t._id));
-      } else {
-        taskItems.forEach((t) => next.add(t._id));
-      }
-      return next;
-    });
-  };
 
   const openEdit = (t) => {
     setForm({ dialogueId: t.dialogueId, chineseTranscript: t.chineseTranscript, pinyin: t.pinyin, assignedTo: t.assignedTo?._id || "" });
@@ -317,43 +278,18 @@ export default function ProjectDetail() {
     return () => { cancelled = true; };
   }, [activeView, id]);
 
-  // After a project-level reset: refetch the header (taskCount) and, if the
-  // Tasks or Users tab is open, its own list too. The Submissions list effect
-  // already re-runs on its own once `project` changes.
-  const handleProjectReset = async () => {
-    fetchProject();
-    if (activeView === ADMIN_PROJECT_VIEWS.TASKS) {
-      setSelectedTaskIds(new Set());
-      setSelectAllMatching(false);
-      setTaskPage(1);
-    }
-    if (activeView === ADMIN_PROJECT_VIEWS.USERS) {
-      setAssigneesLoading(true);
-      try {
-        const r = await getProjectAssignees(id);
-        setProjectAssignees(r.data.data || []);
-      } catch {
-        // non-fatal - the effect above retries next time the tab opens
-      } finally {
-        setAssigneesLoading(false);
-      }
-    }
-  };
-
-  const runBulkDelete = async () => {
-    if (!selectedCount) return;
+  const runDeleteAllTasks = async () => {
+    if (!taskPagination.total) return;
     setBulkDeleting(true);
     try {
-      const payload = selectAllMatching ? { all: true } : { ids: Array.from(selectedTaskIds) };
-      const res = await bulkDeleteTasks(id, payload);
+      const res = await bulkDeleteTasks(id, { all: true });
       toast.success(`Deleted ${res.data.data.deletedCount} task(s).`);
-      setSelectedTaskIds(new Set());
-      setSelectAllMatching(false);
-      setConfirmBulkDelete(false);
+      setConfirmDeleteAll(false);
+      setTaskPage(1);
       fetchProject();
       await fetchTasks(); // re-pull this page with the current filters
     } catch (err) {
-      toast.error(err.response?.data?.message || "Bulk delete failed.");
+      toast.error(err.response?.data?.message || "Delete failed.");
     } finally {
       setBulkDeleting(false);
     }
@@ -573,46 +509,25 @@ export default function ProjectDetail() {
             </div>
           </div>
 
-          <ProjectResetDangerZone projectId={id} projectName={project?.name} onReset={handleProjectReset} />
-
           {activeView === ADMIN_PROJECT_VIEWS.TASKS ? (
-            <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-xs text-black/60">
-                {selectAllMatching ? (
-                  <span className="font-semibold text-red-700">
-                    All {taskPagination.total} task{taskPagination.total === 1 ? "" : "s"} in this project selected.{" "}
-                    <button type="button" className="underline" onClick={() => { setSelectAllMatching(false); setSelectedTaskIds(new Set()); }}>
-                      Clear selection
-                    </button>
-                  </span>
-                ) : selectedTaskIds.size > 0 && allOnPageSelected && taskPagination.total > taskItems.length ? (
-                  <span>
-                    All {taskItems.length} tasks on this page are selected.{" "}
-                    <button type="button" className="underline text-primary-800" onClick={() => setSelectAllMatching(true)}>
-                      Select all {taskPagination.total} tasks in this project
-                    </button>
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-2 ml-auto">
-                {selectedCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmBulkDelete(true)}
-                    disabled={bulkDeleting}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
-                  >
-                    <Trash2 size={12} /> Delete {selectedCount === taskPagination.total ? "all" : selectedCount}
-                  </button>
-                )}
-                <input
-                  type="text"
-                  value={taskSearch}
-                  onChange={(e) => setTaskSearch(e.target.value)}
-                  placeholder="Search tasks…"
-                  className="input w-full sm:w-64"
-                />
-              </div>
+            <div className="mb-3 flex items-center justify-end gap-2 flex-wrap">
+              {taskPagination.total > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteAll(true)}
+                  disabled={bulkDeleting}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
+                >
+                  <Trash2 size={12} /> Delete all ({taskPagination.total})
+                </button>
+              )}
+              <input
+                type="text"
+                value={taskSearch}
+                onChange={(e) => setTaskSearch(e.target.value)}
+                placeholder="Search tasks…"
+                className="input w-full sm:w-64"
+              />
             </div>
           ) : activeView === ADMIN_PROJECT_VIEWS.SUBMISSIONS ? (
             <div className="mb-3 flex justify-end">
@@ -637,16 +552,9 @@ export default function ProjectDetail() {
                     </div>
                   ) : taskItems.length ? (
                     taskItems.map((t) => (
-                      <div key={t._id} className={`p-4 space-y-2 hover:bg-primary-50/70 transition ${selectedTaskIds.has(t._id) || selectAllMatching ? "bg-primary-50" : ""}`}>
+                      <div key={t._id} className="p-4 space-y-2 hover:bg-primary-50/70 transition">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              aria-label={`Select task ${t.taskId}`}
-                              checked={selectAllMatching || selectedTaskIds.has(t._id)}
-                              disabled={selectAllMatching}
-                              onChange={() => toggleSelectTask(t._id)}
-                            />
                             <span className="font-mono text-xs text-primary-700 bg-primary-100 px-2 py-0.5 rounded truncate">{t.taskId}</span>
                             <span className="text-[10px] capitalize text-black/60">{t.overallStatus || "pending"}</span>
                           </div>
@@ -791,18 +699,9 @@ export default function ProjectDetail() {
                   <table className="w-full text-sm table-fixed">
                     <thead>
                       <tr className="border-b border-[#d2dad0] bg-primary-50/70">
-                        <th className="text-left px-2 py-3 w-[5%]">
-                          <input
-                            type="checkbox"
-                            aria-label="Select all tasks on this page"
-                            checked={selectAllMatching || allOnPageSelected}
-                            disabled={selectAllMatching}
-                            onChange={toggleSelectAllOnPage}
-                          />
-                        </th>
-                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[13%]">Task ID</th>
-                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[17%]">Dialogue ID</th>
-                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[38%]">Chinese Transcript</th>
+                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[15%]">Task ID</th>
+                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[18%]">Dialogue ID</th>
+                        <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[40%]">Chinese Transcript</th>
                         <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[12%]">Status</th>
                         <th className="text-left px-2 py-3 text-xs font-semibold text-black/60 uppercase tracking-wide w-[15%]">Action</th>
                       </tr>
@@ -810,30 +709,21 @@ export default function ProjectDetail() {
                     <tbody>
                       {tasksLoading && !taskItems.length ? (
                         <tr>
-                          <td colSpan={6} className="px-4 py-10 text-center text-black/60">
+                          <td colSpan={5} className="px-4 py-10 text-center text-black/60">
                             <Spinner />
                             <p className="mt-2 text-sm">Loading tasks…</p>
                           </td>
                         </tr>
                       ) : taskItems.length ? (
                         taskItems.map((t) => (
-                          <tr key={t._id} className={`border-b border-[#d8e0d5] hover:bg-primary-50/60 transition ${selectAllMatching || selectedTaskIds.has(t._id) ? "bg-primary-50" : ""}`}>
-                            <td className="px-2 py-3.5 w-[5%]">
-                              <input
-                                type="checkbox"
-                                aria-label={`Select task ${t.taskId}`}
-                                checked={selectAllMatching || selectedTaskIds.has(t._id)}
-                                disabled={selectAllMatching}
-                                onChange={() => toggleSelectTask(t._id)}
-                              />
-                            </td>
-                            <td className="px-2 py-3.5 w-[13%]">
+                          <tr key={t._id} className="border-b border-[#d8e0d5] hover:bg-primary-50/60 transition">
+                            <td className="px-2 py-3.5 w-[15%]">
                               <span className="font-mono text-xs text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded block truncate">{t.taskId}</span>
                             </td>
-                            <td className="px-2 py-3.5 w-[17%]">
+                            <td className="px-2 py-3.5 w-[18%]">
                               <span className="text-xs text-black/80 bg-white border border-[#d1d9ce] px-1.5 py-0.5 rounded block truncate">{t.dialogueId}</span>
                             </td>
-                            <td className="px-2 py-3.5 w-[38%]">
+                            <td className="px-2 py-3.5 w-[40%]">
                               <div className="text-black/80 text-xs truncate" title={t.chineseTranscript}>{t.chineseTranscript}</div>
                             </td>
                             <td className="px-2 py-3.5 w-[12%]">
@@ -863,7 +753,7 @@ export default function ProjectDetail() {
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={6} className="px-4 py-12 text-center text-black/60">
+                          <td colSpan={5} className="px-4 py-12 text-center text-black/60">
                             <Mic2 size={32} className="mx-auto mb-2 opacity-30" />
                             {taskSearchDebounced ? "No tasks match your search." : "No tasks yet."}
                           </td>
@@ -1039,10 +929,10 @@ export default function ProjectDetail() {
         </>
       )}
 
-      {confirmBulkDelete && (
+      {confirmDeleteAll && (
         <Modal
-          title={selectAllMatching ? "Delete every task in this project" : "Delete selected tasks"}
-          onClose={() => !bulkDeleting && setConfirmBulkDelete(false)}
+          title="Delete all tasks"
+          onClose={() => !bulkDeleting && setConfirmDeleteAll(false)}
           size="md"
         >
           <div className="space-y-4">
@@ -1052,9 +942,7 @@ export default function ProjectDetail() {
               </div>
               <div className="text-sm text-black/80">
                 <p className="font-medium mb-1">
-                  {selectAllMatching
-                    ? `Delete all ${selectedCount} task${selectedCount === 1 ? "" : "s"} in this project?`
-                    : `Delete ${selectedCount} task${selectedCount === 1 ? "" : "s"}?`}
+                  Delete all {taskPagination.total} task{taskPagination.total === 1 ? "" : "s"} in this project?
                 </p>
                 <p>
                   This also removes every annotator's submission and recorded audio
@@ -1066,7 +954,7 @@ export default function ProjectDetail() {
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => setConfirmBulkDelete(false)}
+                onClick={() => setConfirmDeleteAll(false)}
                 disabled={bulkDeleting}
               >
                 Cancel
@@ -1074,10 +962,10 @@ export default function ProjectDetail() {
               <button
                 type="button"
                 className="btn-danger"
-                onClick={runBulkDelete}
+                onClick={runDeleteAllTasks}
                 disabled={bulkDeleting}
               >
-                {bulkDeleting ? "Deleting…" : `Delete ${selectedCount}`}
+                {bulkDeleting ? "Deleting…" : `Delete all ${taskPagination.total}`}
               </button>
             </div>
           </div>
