@@ -24,11 +24,19 @@ const MIC_CONSTRAINTS = {
 
 /**
  * Records mic audio (mono 16 kHz 16-bit PCM WAV - enforced client- and
- * server-side), previews it locally via Retry / Submit & Next, and plays back
- * any audio already stored for the task. Prev/Next navigation lives outside
- * this component (see the TaskNavBar in TaskDetail).
+ * server-side) and plays back any audio already stored for the task.
+ * Prev/Next navigation lives outside this component (see the TaskNavBar in
+ * TaskDetail).
  *
- * Only mounted once the annotator has passed the verification step.
+ * The moment a recording finishes, a mandatory "Submit this recording?"
+ * popup takes over: the annotator must listen to the take before Submit
+ * unlocks, and the only other way out is to discard it and record again -
+ * there's no dismissing the popup without deciding.
+ *
+ * Only mounted once the annotator has passed the verification step. `readOnly`
+ * (set by the caller once a task is discarded) is the only thing that locks
+ * recording out entirely - re-recording stays available even after a task's
+ * audio has already been submitted.
  */
 export default function AudioRecorder({
   task,
@@ -50,6 +58,8 @@ export default function AudioRecorder({
   const [submitting, setSubmitting] = useState(false);
   // Asked right after a recording finishes, before it's sent anywhere.
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Gates the Submit button in that popup - must play the take through once.
+  const [hasListened, setHasListened] = useState(false);
 
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -102,6 +112,7 @@ export default function AudioRecorder({
         setPlaying(false);
         setCurrentTime(0);
         setConfirmOpen(false);
+        setHasListened(false);
       }
     })();
 
@@ -136,6 +147,10 @@ export default function AudioRecorder({
   }, [recording]);
 
   const startRecording = async () => {
+    // Re-recording (over previously submitted audio) can start mid-playback -
+    // stop that first so it isn't picked up by the new take.
+    audioRef.current?.pause();
+    setPlaying(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
       streamRef.current = stream;
@@ -167,10 +182,10 @@ export default function AudioRecorder({
         });
         setPlaying(false);
         setCurrentTime(0);
-        // Ask right away - Yes submits and moves on, No discards and lets
-        // them record again. Dismissing the popup (Escape / backdrop) just
-        // leaves the Retry / Submit & Next buttons for a manual decision,
-        // e.g. after listening back first.
+        setHasListened(false);
+        // Ask right away, and hold the annotator there: Yes (after listening)
+        // submits and moves on, No discards and lets them record again. The
+        // popup can't be dismissed without picking one.
         setConfirmOpen(true);
       } else {
         toast.error("Recording was empty. Please try again.");
@@ -265,10 +280,12 @@ export default function AudioRecorder({
     setCurrentTime(0);
     setDuration(0);
     setConfirmOpen(false);
+    setHasListened(false);
   };
 
   // "Are you sure you want to submit?" - shown as soon as a recording finishes.
   const handleConfirmSubmit = () => {
+    if (!hasListened) return;
     setConfirmOpen(false);
     handleSubmitAndNext();
   };
@@ -293,32 +310,48 @@ export default function AudioRecorder({
 
   const hasStoredAudio = Boolean(task?.audio?.publicId || task?.audio?.url);
 
-  // Compact action strip - all buttons on a single row, no vertical labels.
-  // Sits inside a fixed panel (see TaskDetail), so vertical space is precious.
+  // Play/pause + scrubber, shared by the dark recorder panel (Row 1, for
+  // reviewing already-submitted audio) and the light confirm popup (for the
+  // pending, not-yet-submitted take). Both drive the same <audio> element.
+  const renderPlaybackStrip = (onDark) => (
+    <div className="flex items-center gap-2 w-full">
+      <button
+        type="button"
+        onClick={togglePlayback}
+        className={`shrink-0 ${onDark ? "recorder-btn-label" : "text-primary-700"}`}
+        aria-label={playing ? "Pause audio" : "Play audio"}
+      >
+        {playing ? <Pause size={20} /> : <Play size={20} />}
+      </button>
+      <input
+        type="range"
+        min="0"
+        max={duration || 0}
+        step="0.01"
+        value={currentTime}
+        onChange={(e) => {
+          const value = Number(e.target.value);
+          if (!audioRef.current) return;
+          audioRef.current.currentTime = value;
+          setCurrentTime(value);
+        }}
+        className={`flex-1 ${onDark ? "accent-white" : "accent-primary-700"}`}
+      />
+      <span className={`text-[11px] min-w-[64px] text-right shrink-0 ${onDark ? "recorder-btn-label" : "text-black/70"}`}>
+        {formatTime(currentTime)} / {formatTime(duration)}
+      </span>
+    </div>
+  );
+
+  // Just the mic control - the pending-recording decision (submit / re-record)
+  // now lives entirely in the mandatory confirm popup below. A foreground
+  // submit on the last task closes that popup before the upload settles, so
+  // show something here rather than going blank for that stretch.
   const renderActions = () => {
-    if (audioBlob) {
-      return (
-        <>
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="inline-flex items-center gap-1.5 rounded-full bg-white text-primary-700 px-3 h-10 text-sm font-semibold shadow"
-            aria-label="Retry recording"
-          >
-            <RotateCcw size={16} /> Retry
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmitAndNext}
-            disabled={submitting}
-            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 text-white px-4 h-10 text-sm font-semibold shadow disabled:opacity-60"
-            aria-label={nextTask ? "Submit recording and go to next task" : "Submit recording"}
-          >
-            <Send size={16} /> {nextTask ? "Submit & Next" : "Submit"}
-          </button>
-        </>
-      );
+    if (submitting) {
+      return <span className="recorder-btn-label text-xs font-medium px-3">Submitting…</span>;
     }
+    if (audioBlob) return null;
 
     return (
       <button
@@ -335,48 +368,24 @@ export default function AudioRecorder({
   return (
     <>
       <div className="rounded-xl bg-primary-700 px-3 py-2 flex flex-col gap-2">
-        {/* Row 1: playback strip (only when audio is available - fresh or stored). */}
+        {/* The <audio> element stays mounted for either audio source so
+            audioRef is always valid; the confirm popup below owns the visible
+            controls while a fresh take is pending. */}
         {(hasStoredAudio || audioBlob) && (
-          <>
-            <audio
-              ref={audioRef}
-              src={audioUrl || undefined}
-              onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
-              onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
-              onEnded={() => setPlaying(false)}
-              className="hidden"
-            />
-            <div className="flex items-center gap-2 w-full">
-              <button
-                type="button"
-                onClick={togglePlayback}
-                className="recorder-btn-label shrink-0"
-                aria-label={playing ? "Pause audio" : "Play audio"}
-              >
-                {playing ? <Pause size={20} /> : <Play size={20} />}
-              </button>
-              <input
-                type="range"
-                min="0"
-                max={duration || 0}
-                step="0.01"
-                value={currentTime}
-                onChange={(e) => {
-                  const value = Number(e.target.value);
-                  if (!audioRef.current) return;
-                  audioRef.current.currentTime = value;
-                  setCurrentTime(value);
-                }}
-                className="flex-1 accent-white"
-              />
-              <span className="recorder-btn-label text-[11px] min-w-[64px] text-right shrink-0">
-                {formatTime(currentTime)} / {formatTime(duration)}
-              </span>
-            </div>
-          </>
+          <audio
+            ref={audioRef}
+            src={audioUrl || undefined}
+            onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+            onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
+            onEnded={() => { setPlaying(false); setHasListened(true); }}
+            className="hidden"
+          />
         )}
 
-        {/* Row 2: recording timer + action buttons (mic / Retry + Submit & Next). */}
+        {/* Row 1: playback strip for already-submitted audio (no pending take). */}
+        {hasStoredAudio && !audioBlob && renderPlaybackStrip(true)}
+
+        {/* Row 2: recording timer + mic control. */}
         <div className="flex items-center justify-center gap-4">
           {recording && (
             <span className="shrink-0 rounded-md bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">
@@ -388,10 +397,13 @@ export default function AudioRecorder({
       </div>
 
       {confirmOpen && !readOnly && (
-        <Modal title="Submit this recording?" size="sm" onClose={() => setConfirmOpen(false)}>
+        <Modal title="Submit this recording?" size="sm" dismissible={false}>
           <div className="space-y-4">
-            <p className="text-sm text-black/80">
-              Are you sure you want to submit? Play it back below first if you want to check it.
+            {renderPlaybackStrip(false)}
+            <p className={`text-xs ${hasListened ? "text-emerald-600" : "text-black/60"}`}>
+              {hasListened
+                ? "Sounds good? Submit below, or record it again."
+                : "Play the recording all the way through before you can submit."}
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -404,8 +416,9 @@ export default function AudioRecorder({
               <button
                 type="button"
                 onClick={handleConfirmSubmit}
-                disabled={submitting}
-                className="bg-emerald-500 hover:bg-emerald-600 !text-white px-4 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-60 inline-flex items-center gap-1.5"
+                disabled={!hasListened || submitting}
+                title={hasListened ? undefined : "Listen to the recording first"}
+                className="bg-emerald-500 hover:bg-emerald-600 !text-white px-4 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
               >
                 <Send size={16} /> Yes, submit{nextTask ? " & next" : ""}
               </button>

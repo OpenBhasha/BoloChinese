@@ -203,10 +203,14 @@ export default function TaskDetail() {
   const scrollBottomPad = canRecord ? "pb-56" : "pb-20";
   const finished = isTaskFinished(task);
   const nextDisabled = !finished;
-  // Once submitted (audio uploaded) or discarded, the task is read-only.
-  // Nothing can be re-edited, re-recorded, or reopened - annotators can only
-  // page through with Prev / Next.
+  // Once submitted (audio uploaded) or discarded, the transcript step is
+  // read-only - nothing can be re-verified/re-edited/re-discarded.
   const readOnly = finished;
+  // Audio is the exception: re-recording stays available any time after
+  // submission (the upload endpoint replaces the old take), so annotators can
+  // fix a bad take without reopening the task. Only a discarded task locks
+  // recording out entirely - reconsider it first.
+  const audioReadOnly = Boolean(task?.discarded?.flagged);
 
   return (
     <UserLayout>
@@ -273,7 +277,7 @@ export default function TaskDetail() {
               task={task}
               taskId={id}
               nextTask={nextTask}
-              readOnly={readOnly}
+              readOnly={audioReadOnly}
               onNavigate={(taskId) => navigate(`/user/tasks/${taskId}`)}
               onSubmittingChange={setRecorderSubmitting}
               onPendingRecordingChange={setPendingRecording}
