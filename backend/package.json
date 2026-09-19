@@ -7,7 +7,12 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "seed": "node seed.js",
-    "reset": "node reset.js"
+    "reset": "node reset.js",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "archiver": "^7.0.1",
@@ -30,7 +35,10 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "mongodb-memory-server": "^11.2.0",
-    "nodemon": "^3.1.0"
+    "@testcontainers/mongodb": "^12.1.0",
+    "nodemon": "^3.1.0",
+    "supertest": "^7.2.2",
+    "testcontainers": "^12.1.0",
+    "vitest": "^5.0.1"
   }
 }

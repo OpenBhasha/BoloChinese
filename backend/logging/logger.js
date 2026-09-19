@@ -12,23 +12,34 @@ const logFormat = winston.format.combine(
   })
 );
 
-const dailyRotateTransport = new DailyRotateFile({
-  filename: path.join(__dirname, "../logs/app-%DATE%.log"),
-  datePattern: "YYYY-MM-DD",
-  zippedArchive: true,
-  maxSize: "20m",
-  maxFiles: "14d",
-});
+// Under `NODE_ENV=test` the logger is silenced and the rotating file transport
+// is left off entirely: the suite runs hundreds of requests, and neither the
+// console noise nor a day's worth of rotated log files is useful there.
+const isTest = process.env.NODE_ENV === "test";
+
+const transports = [
+  new winston.transports.Console({
+    format: winston.format.combine(winston.format.colorize(), logFormat),
+  }),
+];
+
+if (!isTest) {
+  transports.push(
+    new DailyRotateFile({
+      filename: path.join(__dirname, "../logs/app-%DATE%.log"),
+      datePattern: "YYYY-MM-DD",
+      zippedArchive: true,
+      maxSize: "20m",
+      maxFiles: "14d",
+    })
+  );
+}
 
 const logger = winston.createLogger({
   level: process.env.NODE_ENV === "production" ? "warn" : "debug",
+  silent: isTest,
   format: logFormat,
-  transports: [
-    new winston.transports.Console({
-      format: winston.format.combine(winston.format.colorize(), logFormat),
-    }),
-    dailyRotateTransport,
-  ],
+  transports,
 });
 
 module.exports = logger;
