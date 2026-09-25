@@ -5,13 +5,12 @@ import Modal from "../../components/ui/Modal";
 import {
   getDashboard,
   getBackupStatus,
-  downloadBackup,
   runCleanup,
   resetDatabase,
 } from "../../api/admin.api";
-import { Users, FolderOpen, ClipboardList, ShieldCheck, Archive, Trash2, AlertTriangle } from "lucide-react";
+import { Users, FolderOpen, ClipboardList, ShieldCheck, Trash2, AlertTriangle } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
-import { formatDuration, formatDateTime, downloadBlob } from "../../utils/format";
+import { formatDuration, formatDateTime } from "../../utils/format";
 import toast from "react-hot-toast";
 
 export default function AdminDashboard() {
@@ -19,7 +18,6 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   const [backup, setBackup] = useState(null);
-  const [backupBusy, setBackupBusy] = useState(false);
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleanupText, setCleanupText] = useState("");
@@ -41,28 +39,6 @@ export default function AdminDashboard() {
   useEffect(() => {
     Promise.all([loadDashboard(), loadBackup()]).finally(() => setLoading(false));
   }, []);
-
-  const handleBackup = async () => {
-    setBackupBusy(true);
-    // The server tracks how many of the backup's audio files it's fetched so
-    // far - poll it while the download is in flight so a large dataset shows
-    // a real percentage instead of an indefinite spinner.
-    const pollId = setInterval(loadBackup, 300);
-    try {
-      const res = await downloadBackup();
-      const name =
-        res.headers?.["content-disposition"]?.match(/filename="?([^"]+)"?/)?.[1] ||
-        `bolochinese-backup-${new Date().toISOString().slice(0, 10)}.zip`;
-      downloadBlob(res.data, name, "application/zip");
-      toast.success("Backup downloaded.");
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Backup failed.");
-    } finally {
-      clearInterval(pollId);
-      setBackupBusy(false);
-      await loadBackup();
-    }
-  };
 
   const handleCleanup = async () => {
     setCleanupBusy(true);
@@ -107,9 +83,7 @@ export default function AdminDashboard() {
 
   const pending = backup?.pending || {};
   const canCleanup = !!backup?.canCleanup && !backup?.inProgress;
-  const busyOp = backup?.inProgress; // "backup" | "cleanup" | "reset" | null
-  const backupProgress = backupBusy && backup?.progress?.active ? backup.progress : null;
-  const isFinalizing = backupProgress?.phase === "finalizing";
+  const busyOp = backup?.inProgress; // "cleanup" | "reset" | null
 
   return (
     <AdminLayout>
@@ -169,20 +143,21 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Backup & cleanup */}
+          {/* Cleanup */}
           <div className="card mt-6">
             <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
               <div>
-                <h2 className="text-sm font-semibold text-primary-500 uppercase tracking-wide">Backup &amp; Cleanup</h2>
+                <h2 className="text-sm font-semibold text-primary-500 uppercase tracking-wide">Cleanup</h2>
                 <p className="text-primary-400 text-sm mt-1">
-                  Download the day's finished tasks, audio, and progress, then clean up.
-                  Cleanup only deletes the audio from Cloudinary - tasks, submissions, and
-                  progress are kept, just hidden from the annotator. Unfinished tasks are untouched.
+                  Archives finished tasks - hides them from annotators, while tasks, submissions,
+                  and progress are kept - and permanently deletes their audio from Cloudinary.
+                  Unfinished tasks are untouched. This doesn't take a backup for you; make sure
+                  you've saved anything you need first.
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
               <div>
                 <p className="text-xs text-primary-400 uppercase tracking-wide">Finished tasks</p>
                 <p className="font-bold text-lg text-primary-900">{pending.finishedTasks ?? "—"}</p>
@@ -195,20 +170,8 @@ export default function AdminDashboard() {
                 <p className="text-xs text-primary-400 uppercase tracking-wide">Audio files</p>
                 <p className="font-bold text-lg text-primary-900">{pending.audioFiles ?? "—"}</p>
               </div>
-              <div>
-                <p className="text-xs text-primary-400 uppercase tracking-wide">Last backup</p>
-                <p className="font-medium text-sm text-primary-900">
-                  {backup?.lastBackupAt ? formatDateTime(backup.lastBackupAt) : "Never"}
-                </p>
-              </div>
             </div>
 
-            {backup?.lastBackupHadErrors && (
-              <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
-                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                <span>The last backup had audio download errors. Re-download a clean backup before cleaning up.</span>
-              </div>
-            )}
             {backup?.lastCleanupAt && (
               <p className="text-xs text-primary-400 mb-4">
                 Last cleanup: {formatDateTime(backup.lastCleanupAt)}
@@ -218,47 +181,18 @@ export default function AdminDashboard() {
               </p>
             )}
 
-            {backupProgress && (
-              <div className="mb-4">
-                <div className="h-1.5 w-full max-w-xs rounded-full bg-primary-100 overflow-hidden">
-                  <div
-                    className={`h-full bg-primary-600 transition-all duration-300 ${backupProgress.percent === null ? "animate-pulse w-full" : ""}`}
-                    style={backupProgress.percent === null ? undefined : { width: `${backupProgress.percent}%` }}
-                  />
-                </div>
-                <p className="text-xs text-primary-400 mt-1">
-                  {backupProgress.percent === null
-                    ? "Finalizing…"
-                    : isFinalizing
-                    ? `Finalizing (compressing & streaming)… ${backupProgress.done}/${backupProgress.total} (${backupProgress.percent}%)`
-                    : `Fetching audio… ${backupProgress.done}/${backupProgress.total} (${backupProgress.percent}%)`}
-                </p>
-              </div>
-            )}
-
             <div className="flex items-center gap-3 flex-wrap">
-              <button
-                type="button"
-                onClick={handleBackup}
-                disabled={backupBusy || !!busyOp}
-                className="btn-primary inline-flex items-center gap-2"
-              >
-                <Archive size={16} />{" "}
-                {backupBusy
-                  ? `Preparing…${backupProgress?.percent !== null && backupProgress?.percent !== undefined ? ` ${backupProgress.percent}%` : ""}`
-                  : "Download backup (.zip)"}
-              </button>
               <button
                 type="button"
                 onClick={() => setCleanupOpen(true)}
                 disabled={!canCleanup}
-                title={canCleanup ? "" : "Download a fresh backup first"}
+                title={canCleanup ? "" : "Nothing finished to clean up yet"}
                 className="btn-secondary inline-flex items-center gap-2 disabled:opacity-50"
               >
                 <Trash2 size={16} /> Clean up finished tasks &amp; audio
               </button>
-              {!canCleanup && !backup?.lastBackupHadErrors && (
-                <span className="text-xs text-primary-400">Download a fresh backup to enable cleanup.</span>
+              {!canCleanup && (pending.finishedTasks ?? 0) === 0 && (
+                <span className="text-xs text-primary-400">Nothing finished yet.</span>
               )}
             </div>
           </div>
@@ -311,12 +245,13 @@ export default function AdminDashboard() {
               submission(s)). The tasks and submissions themselves are kept and still count toward
               progress - they're just hidden from the annotator. Unfinished tasks are untouched.
             </p>
-            {backup?.lastBackupHadErrors && (
-              <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                <span>The last backup reported audio errors — some audio may not be saved. Re-download first.</span>
-              </div>
-            )}
+            <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <span>
+                This doesn't take a backup for you. Make sure you've saved a copy of anything
+                you need before continuing - the audio deletion can't be undone.
+              </span>
+            </div>
             <div>
               <label className="label">Type <span className="font-mono">CLEANUP</span> to confirm</label>
               <input

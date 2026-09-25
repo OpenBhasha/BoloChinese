@@ -1,15 +1,16 @@
 /**
- * Post-backup sweep. Nothing is deleted from the database: every finished
- * task/submission (completed/discarded, already frozen into the last backup)
- * has its Cloudinary audio purged and is then marked archived/backed-up so it
- * disappears from the annotator's task list. Progress keeps reading straight
- * off these same rows forever - there's no separate ledger write here, since
- * nothing is being destroyed that would otherwise be lost.
+ * Archives the finished set (completed/discarded tasks, untouched as of the
+ * moment this runs) and purges their Cloudinary audio. Nothing is deleted
+ * from the database: a task is marked archived (hidden from the annotator's
+ * task list) and its submissions are kept - progress keeps reading straight
+ * off those same rows forever.
  *
- * Refuses to run unless there is a backup newer than the last cleanup, and
- * uses that backup's cutoff as the high-water mark - anything finished after
- * the backup waits for the next cycle, so audio is never purged before it's
- * been archived.
+ * There is no "you must back up first" check here - that's a deliberate
+ * choice (see the Dashboard change that removed the in-app zip download):
+ * the admin is expected to have already captured anything they need through
+ * their own external process before running this. This action is exactly as
+ * destructive as it looks - it permanently deletes audio from Cloudinary the
+ * moment it runs, with no undo.
  *
  * A submission's Cloudinary purge is confirmed per-id: only ids Cloudinary
  * actually reports as deleted (or already gone) get marked backed-up. A
@@ -26,27 +27,7 @@ const lock = require("./backupLock");
 const runCleanup = async () => {
   lock.acquire("cleanup");
   try {
-    const state = await dao.getBackupState();
-
-    if (!state.lastBackupAt) {
-      const err = new Error("Download a backup before running a cleanup.");
-      err.statusCode = 409;
-      throw err;
-    }
-    if (state.lastBackupHadErrors) {
-      const err = new Error(
-        "The last backup reported audio download errors. Re-download a clean backup before cleaning up."
-      );
-      err.statusCode = 409;
-      throw err;
-    }
-    if (state.lastCleanupAt && new Date(state.lastCleanupAt) >= new Date(state.lastBackupAt)) {
-      const err = new Error("No new backup since the last cleanup. Download a fresh backup first.");
-      err.statusCode = 409;
-      throw err;
-    }
-
-    const cutoff = new Date(state.lastBackupAt);
+    const cutoff = new Date();
     const date = kolkataDate(cutoff);
 
     const { submissions } = await dao.getCleanupCandidates(cutoff);

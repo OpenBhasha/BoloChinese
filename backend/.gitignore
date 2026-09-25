@@ -4,3 +4,7 @@ logs/
 *.log
 .DS_Store
 coverage/
+
+# Ad-hoc local backup/cleanup scripts and their downloaded data - not part
+# of the app, never meant to be committed.
+backup/

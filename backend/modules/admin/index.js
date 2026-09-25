@@ -23,12 +23,16 @@ router.get("/users/progress", ctrl.getUsersProgress);
 // ─── Backup & cleanup ────────────────────────────────────────────────────────
 // GET  /backup         - streams a .zip of the finished set (completed/discarded
 //                        tasks + audio + progress). Stamps lastBackupAt on a
-//                        clean delivery.
+//                        clean delivery, kept only for historical display -
+//                        not required before /cleanup. Not linked from the
+//                        dashboard (slow zip-download UX); still reachable
+//                        directly for anyone who wants a full archive copy.
 // GET  /backup/status  - card state: last backup/cleanup, whether cleanup is
 //                        allowed, and how much it would remove.
-// POST /cleanup        - snapshots finished work into the permanent progress
-//                        ledger, then hard-deletes those tasks + audio. Refuses
-//                        unless there is a fresh, error-free backup.
+// POST /cleanup        - archives the finished set (hides it from annotators;
+//                        tasks/submissions/progress are kept) and purges its
+//                        Cloudinary audio. No precondition on having backed
+//                        up first - that's the admin's own responsibility.
 router.get("/backup", ctrl.downloadBackup);
 router.get("/backup/status", ctrl.getBackupStatus);
 router.post("/cleanup", ctrl.runCleanup);

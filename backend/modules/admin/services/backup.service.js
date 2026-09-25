@@ -24,12 +24,14 @@
  * when the parent Task is already gone, and to a generic name as a last
  * resort if even that was never captured.
  *
- * On a clean delivery it stamps BackupState.lastBackupAt = cutoff, which is
- * what the cleanup endpoint later uses as its purge high-water mark. Cleanup
- * no longer deletes tasks or submissions - it archives them (hides them from
- * annotators) and purges their Cloudinary audio, so nothing here is a "last
- * chance" copy of data that's about to disappear from the database, only of
- * audio that's about to be permanently deleted from Cloudinary.
+ * On a clean delivery it stamps BackupState.lastBackupAt = cutoff, kept only
+ * for historical display on the dashboard - cleanup (see cleanup.service.js)
+ * no longer depends on this endpoint having been called at all. Cleanup
+ * never deletes tasks or submissions either way - it archives them (hides
+ * them from annotators) and purges their Cloudinary audio, so nothing here
+ * is a "last chance" copy of data that's about to disappear from the
+ * database, only of audio that's about to be permanently deleted from
+ * Cloudinary.
  */
 const archiver = require("archiver");
 const dao = require("../dao/admin.dao");

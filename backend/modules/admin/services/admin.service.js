@@ -30,13 +30,13 @@ const backupProgress = require("./backupProgress");
 // whether a cleanup is allowed right now, and how much a cleanup would remove.
 // `progress` is polled by the client while a backup is running, so a large
 // download shows a percentage instead of sitting on an indefinite spinner.
+// Cleanup itself no longer requires a prior backup (see cleanup.service.js) -
+// `canCleanup` just reflects whether there's anything to do and nothing else
+// is already running.
 const getBackupStatus = async () => {
   const state = await dao.getBackupState();
   const pending = await dao.getFinishedSetSummary(new Date());
-  const canCleanup =
-    !!state.lastBackupAt &&
-    !state.lastBackupHadErrors &&
-    (!state.lastCleanupAt || new Date(state.lastBackupAt) > new Date(state.lastCleanupAt));
+  const canCleanup = pending.finishedTasks > 0 && !backupLock.current();
   return {
     lastBackupAt: state.lastBackupAt || null,
     lastBackupHadErrors: !!state.lastBackupHadErrors,
