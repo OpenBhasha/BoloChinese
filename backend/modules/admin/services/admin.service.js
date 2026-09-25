@@ -367,10 +367,11 @@ const getAllProjects = async () => {
   if (!projects.length) return projects;
 
   const Task = require("../models/task.model");
-  // Matches what the project's Tasks tab actually lists - archived (backed
-  // up) tasks are excluded there, so the badge shouldn't overcount them.
+  // Lifetime total (includes archived) - the project-level count is meant to
+  // read as "how many tasks this project was ever assigned", not "how many
+  // are still active". The Tasks tab's own list still excludes archived ones.
   const counts = await Task.aggregate([
-    { $match: { projectId: { $in: projects.map((p) => p._id) }, archivedAt: null } },
+    { $match: { projectId: { $in: projects.map((p) => p._id) } } },
     { $group: { _id: "$projectId", count: { $sum: 1 } } },
   ]);
   const countByProject = new Map(counts.map((c) => [String(c._id), c.count]));
@@ -389,10 +390,10 @@ const getProjectById = async (id) => {
     err.statusCode = 404;
     throw err;
   }
-  // Attach taskCount without shipping the full task list. Matches the Tasks
-  // tab - archived (backed up) tasks are excluded there too.
+  // Attach taskCount without shipping the full task list. Lifetime total
+  // (includes archived) - see getAllProjects.
   const Task = require("../models/task.model");
-  const taskCount = await Task.countDocuments({ projectId: id, archivedAt: null });
+  const taskCount = await Task.countDocuments({ projectId: id });
   const projectObj = project.toObject ? project.toObject() : project;
   projectObj.taskCount = taskCount;
   return projectObj;
