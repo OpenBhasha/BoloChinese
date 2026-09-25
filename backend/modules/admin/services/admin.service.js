@@ -24,9 +24,12 @@ const getUsersProgress = async () => dao.getPerUserProgress();
 
 // ─── Backup & cleanup ────────────────────────────────────────────────────────
 const backupLock = require("./backupLock");
+const backupProgress = require("./backupProgress");
 
 // Drives the dashboard's Backup & Cleanup card: the last backup/cleanup stamps,
 // whether a cleanup is allowed right now, and how much a cleanup would remove.
+// `progress` is polled by the client while a backup is running, so a large
+// download shows a percentage instead of sitting on an indefinite spinner.
 const getBackupStatus = async () => {
   const state = await dao.getBackupState();
   const pending = await dao.getFinishedSetSummary(new Date());
@@ -41,6 +44,7 @@ const getBackupStatus = async () => {
     lastCleanupAt: state.lastCleanupAt || null,
     lastCleanupStats: state.lastCleanupStats || null,
     inProgress: backupLock.current(),
+    progress: backupProgress.current(),
     canCleanup,
     pending,
   };

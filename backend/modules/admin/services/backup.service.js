@@ -38,6 +38,7 @@ const { toCsv } = require("../../../services/csv");
 const { getAudioStream } = require("../../../services/cloudinary.service");
 const { kolkataDate, KOLKATA_TZ } = require("../../../services/datetime");
 const lock = require("./backupLock");
+const progress = require("./backupProgress");
 
 const iso = (d) => (d ? new Date(d).toISOString() : "");
 
@@ -501,6 +502,7 @@ const runBackup = async (res) => {
       queueAudio(orphans, "_orphaned/audio", "orphaned");
     }
 
+    progress.start(audioJobs.length);
     await runWithConcurrency(audioJobs, AUDIO_FETCH_CONCURRENCY, async ({ entry, folderPrefix, errorLabel }) => {
       const url = entry.submission.audio.url;
       try {
@@ -516,6 +518,8 @@ const runBackup = async (res) => {
           error: err.message,
         });
         logger.warn(`backup: audio download failed for ${entry.audioFilename}: ${err.message}`);
+      } finally {
+        progress.increment();
       }
     });
 
@@ -585,6 +589,7 @@ const runBackup = async (res) => {
     logger.error(`Backup stream failed after headers sent: ${err.message}`);
     if (!res.writableEnded) res.end();
   } finally {
+    progress.finish();
     lock.release();
   }
 };

@@ -44,6 +44,10 @@ export default function AdminDashboard() {
 
   const handleBackup = async () => {
     setBackupBusy(true);
+    // The server tracks how many of the backup's audio files it's fetched so
+    // far - poll it while the download is in flight so a large dataset shows
+    // a real percentage instead of an indefinite spinner.
+    const pollId = setInterval(loadBackup, 300);
     try {
       const res = await downloadBackup();
       const name =
@@ -51,11 +55,12 @@ export default function AdminDashboard() {
         `bolochinese-backup-${new Date().toISOString().slice(0, 10)}.zip`;
       downloadBlob(res.data, name, "application/zip");
       toast.success("Backup downloaded.");
-      await loadBackup();
     } catch (err) {
       toast.error(err.response?.data?.message || "Backup failed.");
     } finally {
+      clearInterval(pollId);
       setBackupBusy(false);
+      await loadBackup();
     }
   };
 
@@ -103,6 +108,7 @@ export default function AdminDashboard() {
   const pending = backup?.pending || {};
   const canCleanup = !!backup?.canCleanup && !backup?.inProgress;
   const busyOp = backup?.inProgress; // "backup" | "cleanup" | "reset" | null
+  const backupPercent = backupBusy && backup?.progress?.active ? backup.progress.percent : null;
 
   return (
     <AdminLayout>
@@ -211,6 +217,20 @@ export default function AdminDashboard() {
               </p>
             )}
 
+            {backupPercent !== null && (
+              <div className="mb-4">
+                <div className="h-1.5 w-full max-w-xs rounded-full bg-primary-100 overflow-hidden">
+                  <div
+                    className="h-full bg-primary-600 transition-all duration-300"
+                    style={{ width: `${backupPercent}%` }}
+                  />
+                </div>
+                <p className="text-xs text-primary-400 mt-1">
+                  Fetching audio… {backup.progress.done}/{backup.progress.total} ({backupPercent}%)
+                </p>
+              </div>
+            )}
+
             <div className="flex items-center gap-3 flex-wrap">
               <button
                 type="button"
@@ -218,7 +238,7 @@ export default function AdminDashboard() {
                 disabled={backupBusy || !!busyOp}
                 className="btn-primary inline-flex items-center gap-2"
               >
-                <Archive size={16} /> {backupBusy ? "Preparing…" : "Download backup (.zip)"}
+                <Archive size={16} /> {backupBusy ? `Preparing…${backupPercent !== null ? ` ${backupPercent}%` : ""}` : "Download backup (.zip)"}
               </button>
               <button
                 type="button"
