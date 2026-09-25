@@ -5,6 +5,8 @@ logs/
 .DS_Store
 coverage/
 
-# Ad-hoc local backup/cleanup scripts and their downloaded data - not part
-# of the app, never meant to be committed.
-backup/
+# backup/*.py and *.ipynb (ad-hoc local backup/cleanup scripts) are tracked.
+# Only their downloaded output dirs (real annotator audio + CSV) are excluded
+# - scripts are flat files directly in backup/, data always lives one level
+# deeper regardless of the OUTPUT_DIR/BACKUP_DIR name used for a given run.
+backup/*/

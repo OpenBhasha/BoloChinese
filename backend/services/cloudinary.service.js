@@ -42,11 +42,16 @@ const uploadAudio = async (buffer, taskId, userId) => {
     inputStream.pipe(uploadStream);
   });
 
-  logger.info(`Audio uploaded to Cloudinary | publicId: ${result.public_id} | size: ${buffer.length} bytes`);
+  // Cloudinary re-packages the WAV container on ingest (resource_type:
+  // "video", format: "wav"), so the stored/served file is a few bytes off
+  // from the raw buffer we sent. Use Cloudinary's own reported size
+  // (result.bytes) so what we record matches what it actually serves back.
+  const fileSizeBytes = result.bytes ?? buffer.length;
+  logger.info(`Audio uploaded to Cloudinary | publicId: ${result.public_id} | size: ${fileSizeBytes} bytes`);
   return {
     publicId: result.public_id,
     url: result.secure_url,
-    fileSizeBytes: buffer.length,
+    fileSizeBytes,
   };
 };
 
