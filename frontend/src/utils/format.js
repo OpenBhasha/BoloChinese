@@ -8,6 +8,17 @@ export const formatFileSize = (bytes) => {
   return `${(bytes / 1024).toFixed(1)} KB`;
 };
 
+// General-purpose byte formatter that scales up to GB/TB - formatFileSize
+// above is KB-only, fine for a single audio clip but not for account-wide
+// storage totals.
+export const formatBytes = (bytes) => {
+  const n = Number(bytes) || 0;
+  if (n <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
+};
+
 // Seconds -> "m:ss" (or "h:mm:ss" past an hour). Used for recorded-audio totals.
 export const formatDuration = (seconds) => {
   const total = Math.round(Number(seconds) || 0);

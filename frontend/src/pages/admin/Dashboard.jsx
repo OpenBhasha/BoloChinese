@@ -5,12 +5,13 @@ import Modal from "../../components/ui/Modal";
 import {
   getDashboard,
   getBackupStatus,
+  getCloudinaryUsage,
   runCleanup,
   resetDatabase,
 } from "../../api/admin.api";
-import { Users, FolderOpen, ClipboardList, ShieldCheck, Trash2, AlertTriangle } from "lucide-react";
+import { Users, FolderOpen, ClipboardList, ShieldCheck, Trash2, AlertTriangle, Cloud } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
-import { formatDuration, formatDateTime } from "../../utils/format";
+import { formatDuration, formatDateTime, formatBytes } from "../../utils/format";
 import toast from "react-hot-toast";
 
 export default function AdminDashboard() {
@@ -21,6 +22,9 @@ export default function AdminDashboard() {
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleanupText, setCleanupText] = useState("");
+
+  // null while loading, { error: "..." } if unavailable, else the usage payload.
+  const [cloudinaryUsage, setCloudinaryUsage] = useState(null);
 
   const [resetScope, setResetScope] = useState(null); // "tasks" | "retain-users" | "full" | null
   const [resetBusy, setResetBusy] = useState(false);
@@ -36,8 +40,17 @@ export default function AdminDashboard() {
       .then((r) => setBackup(r.data.data))
       .catch(() => setBackup(null));
 
+  // Separate from the rest of the dashboard load - a slow/misconfigured
+  // Cloudinary account shouldn't hold up or break the numbers that come
+  // from our own DB.
+  const loadCloudinaryUsage = () =>
+    getCloudinaryUsage()
+      .then((r) => setCloudinaryUsage(r.data.data))
+      .catch((err) => setCloudinaryUsage({ error: err.response?.data?.message || "Unavailable" }));
+
   useEffect(() => {
     Promise.all([loadDashboard(), loadBackup()]).finally(() => setLoading(false));
+    loadCloudinaryUsage();
   }, []);
 
   const handleCleanup = async () => {
@@ -49,6 +62,7 @@ export default function AdminDashboard() {
       setCleanupOpen(false);
       setCleanupText("");
       await Promise.all([loadDashboard(), loadBackup()]);
+      loadCloudinaryUsage();
     } catch (err) {
       toast.error(err.response?.data?.message || "Cleanup failed.");
     } finally {
@@ -74,6 +88,7 @@ export default function AdminDashboard() {
       setResetScope(null);
       setResetText("");
       await Promise.all([loadDashboard(), loadBackup()]);
+      loadCloudinaryUsage();
     } catch (err) {
       toast.error(err.response?.data?.message || "Reset failed.");
     } finally {
@@ -195,6 +210,76 @@ export default function AdminDashboard() {
                 <span className="text-xs text-primary-400">Nothing finished yet.</span>
               )}
             </div>
+          </div>
+
+          {/* Cloudinary storage */}
+          <div className="card mt-6">
+            <h2 className="text-sm font-semibold text-primary-500 uppercase tracking-wide flex items-center gap-2 mb-4">
+              <Cloud size={15} /> Cloudinary Storage
+            </h2>
+            {!cloudinaryUsage ? (
+              <p className="text-sm text-primary-400">Loading…</p>
+            ) : cloudinaryUsage.error ? (
+              <p className="text-sm text-primary-400">Unavailable — {cloudinaryUsage.error}</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-primary-500">Used</span>
+                  <span className="font-bold text-lg text-primary-900">{formatBytes(cloudinaryUsage.storageUsedBytes)}</span>
+                </div>
+
+                {cloudinaryUsage.storageLimitBytes != null ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-primary-500">Available</span>
+                      <span className="font-bold text-lg text-primary-900">
+                        {formatBytes(Math.max(0, cloudinaryUsage.storageLimitBytes - cloudinaryUsage.storageUsedBytes))}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-primary-100 overflow-hidden">
+                      <div
+                        className="h-full bg-primary-600"
+                        style={{
+                          width: `${Math.min(100, Math.round((cloudinaryUsage.storageUsedBytes / cloudinaryUsage.storageLimitBytes) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-primary-400">
+                      {Math.round((cloudinaryUsage.storageUsedBytes / cloudinaryUsage.storageLimitBytes) * 100)}% of{" "}
+                      {formatBytes(cloudinaryUsage.storageLimitBytes)} plan limit
+                    </p>
+                  </>
+                ) : cloudinaryUsage.creditsLimit != null ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-primary-500">Credits used</span>
+                      <span className="font-bold text-lg text-primary-900">
+                        {cloudinaryUsage.creditsUsage} / {cloudinaryUsage.creditsLimit}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-primary-100 overflow-hidden">
+                      <div
+                        className="h-full bg-primary-600"
+                        style={{ width: `${Math.min(100, cloudinaryUsage.creditsUsedPercent ?? 0)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-primary-400">
+                      Your plan shares one credit pool across storage, bandwidth, and transformations -
+                      there's no separate storage cap to show as "available."
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-primary-400">Your plan doesn't report a storage limit.</p>
+                )}
+
+                {cloudinaryUsage.plan && (
+                  <p className="text-xs text-primary-400">
+                    Plan: {cloudinaryUsage.plan}
+                    {cloudinaryUsage.lastUpdated ? ` · updated ${cloudinaryUsage.lastUpdated}` : ""}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Danger zone */}

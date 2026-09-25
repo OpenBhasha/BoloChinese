@@ -150,6 +150,27 @@ const deleteAllAudio = async () => {
   return deleted;
 };
 
+// Account-wide storage/credit usage, for the dashboard's "how much Cloudinary
+// storage is used" display. Cloudinary's response shape depends on plan
+// type: older plans report an explicit storage.limit (bytes); newer
+// credits-based plans fold storage/bandwidth/transformations into one
+// shared credits.limit instead and may omit storage.limit entirely - the
+// caller has to handle either being null, there's no way to always have both.
+const getUsage = async () => {
+  assertConfigured();
+
+  const result = await cloudinary.api.usage();
+  return {
+    plan: result.plan || null,
+    lastUpdated: result.last_updated || null,
+    storageUsedBytes: result.storage?.usage ?? null,
+    storageLimitBytes: result.storage?.limit ?? null,
+    creditsUsage: result.credits?.usage ?? null,
+    creditsLimit: result.credits?.limit ?? null,
+    creditsUsedPercent: result.credits?.used_percent ?? null,
+  };
+};
+
 const getAudioStream = async (audioUrl) => {
   if (!audioUrl) {
     const err = new Error("Audio URL is required.");
@@ -171,4 +192,6 @@ const getAudioStream = async (audioUrl) => {
   });
 };
 
-module.exports = { uploadAudio, deleteAudio, deleteAudioBulk, deleteAudioBulkConfirmed, deleteAllAudio, getAudioStream };
+module.exports = {
+  uploadAudio, deleteAudio, deleteAudioBulk, deleteAudioBulkConfirmed, deleteAllAudio, getAudioStream, getUsage,
+};

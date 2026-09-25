@@ -50,6 +50,14 @@ const getBackupStatus = async () => {
   };
 };
 
+// Cloudinary account-wide storage/credit usage - a separate, slower (real
+// network call to a third party) endpoint from the rest of the dashboard so
+// a Cloudinary hiccup can't hold up the numbers that come from our own DB.
+const getCloudinaryUsage = async () => {
+  const { getUsage } = require("../../../services/cloudinary.service");
+  return getUsage();
+};
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 // `deleted` may be "1"/"true"/"all"/undefined - filters the listing.
 const getAllUsers = async ({ deleted } = {}) => {
@@ -788,6 +796,7 @@ module.exports = {
   getDashboard,
   getUsersProgress,
   getBackupStatus,
+  getCloudinaryUsage,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
   deleteUser, bulkDeleteUsers,
   getUserSubmissions,

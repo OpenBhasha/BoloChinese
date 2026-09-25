@@ -29,12 +29,14 @@ router.get("/users/progress", ctrl.getUsersProgress);
 //                        directly for anyone who wants a full archive copy.
 // GET  /backup/status  - card state: last backup/cleanup, whether cleanup is
 //                        allowed, and how much it would remove.
+// GET  /cloudinary/usage - account-wide Cloudinary storage/credit usage.
 // POST /cleanup        - archives the finished set (hides it from annotators;
 //                        tasks/submissions/progress are kept) and purges its
 //                        Cloudinary audio. No precondition on having backed
 //                        up first - that's the admin's own responsibility.
 router.get("/backup", ctrl.downloadBackup);
 router.get("/backup/status", ctrl.getBackupStatus);
+router.get("/cloudinary/usage", ctrl.getCloudinaryUsage);
 router.post("/cleanup", ctrl.runCleanup);
 
 // ─── Danger zone ─────────────────────────────────────────────────────────────

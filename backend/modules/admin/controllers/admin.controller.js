@@ -30,6 +30,16 @@ const getBackupStatus = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const getCloudinaryUsage = async (req, res, next) => {
+  try {
+    const usage = await svc.getCloudinaryUsage();
+    return successResponse(res, "Cloudinary usage retrieved.", usage);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 // Streams the .zip straight to the client. Once headers are out we can't send a
 // JSON error, so failures after that point just close the socket.
 const downloadBackup = async (req, res, next) => {
@@ -482,6 +492,7 @@ module.exports = {
   getDashboard,
   getUsersProgress,
   getBackupStatus,
+  getCloudinaryUsage,
   downloadBackup,
   runCleanup,
   resetDatabase,
