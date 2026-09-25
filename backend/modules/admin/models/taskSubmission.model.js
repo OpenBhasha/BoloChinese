@@ -8,6 +8,13 @@ const taskSubmissionSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    // Snapshot of the parent task's dialogueId at write time, kept so a
+    // submission stays self-describing (backup filenames, CSV exports) even
+    // if the Task document is later hard-deleted and the live join breaks.
+    dialogueId: {
+      type: String,
+      default: null,
+    },
     projectId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Project",
@@ -89,6 +96,14 @@ const taskSubmissionSchema = new mongoose.Schema(
     timeSpentMs: {
       type: Number,
       default: 0,
+    },
+    // Set once a backup+cleanup pass has confirmed this submission's audio is
+    // purged from Cloudinary (or there was none to purge). Guards against
+    // re-processing the same submission in a later cleanup, and is what lets
+    // the parent task be archived once every submission on it is set.
+    backedUpAt: {
+      type: Date,
+      default: null,
     },
   },
   { timestamps: true }

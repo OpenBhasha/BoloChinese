@@ -46,6 +46,15 @@ export const createCloudinaryFake = () => {
     for (const id of new Set(publicIds.filter(Boolean))) store.delete(id);
   };
 
+  // Cleanup's per-submission confirmed variant - no real network to fail
+  // against here, so every requested id "succeeds" (mirrors how the real
+  // service treats Cloudinary's "deleted" and "not_found" as both fine).
+  const deleteAudioBulkConfirmed = async (publicIds = []) => {
+    const ids = [...new Set(publicIds.filter(Boolean))];
+    ids.forEach((id) => store.delete(id));
+    return { succeeded: ids, failed: [] };
+  };
+
   const deleteAllAudio = async () => {
     const deleted = store.size;
     store.clear();
@@ -66,7 +75,7 @@ export const createCloudinaryFake = () => {
   };
 
   return {
-    exports: { uploadAudio, deleteAudio, deleteAudioBulk, deleteAllAudio, getAudioStream },
+    exports: { uploadAudio, deleteAudio, deleteAudioBulk, deleteAudioBulkConfirmed, deleteAllAudio, getAudioStream },
 
     // Assert on these rather than on call counts.
     stored: () => [...store.values()],

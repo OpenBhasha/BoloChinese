@@ -27,6 +27,9 @@ const getProjectsForUser = async (userId) => {
 
   const [projects, projectTasks, submissions] = await Promise.all([
     Project.find({ _id: { $in: projectIds } }).sort({ createdAt: -1 }).lean(),
+    // Archived tasks are done-and-hidden, but they still legitimately belong
+    // to this project - excluding them here would shrink `total` and make
+    // the annotator's own "N/M completed" bar regress after a cleanup runs.
     Task.find({ projectId: { $in: projectIds } }).select("_id projectId").lean(),
     TaskSubmission.find({ userId, projectId: { $in: projectIds } })
       .select("projectId taskId status isCorrected")
@@ -105,7 +108,8 @@ const getTasksForUserByProject = async (
 ) => {
   const skip = (page - 1) * limit;
   const uid = oid(userId);
-  const match = { projectId: oid(projectId) };
+  // Archived (backed-up) tasks are hidden from the annotator's own list.
+  const match = { projectId: oid(projectId), archivedAt: null };
 
   if (search) {
     const rx = new RegExp(escapeRegex(search), "i");
@@ -156,15 +160,22 @@ const getTasksForUserByProject = async (
 };
 
 // Filter-chip counts for the project task list. total - submitted = pending.
-// Submissions are matched through a $lookup against the live Task collection
-// so a deleted task's orphaned submission (kept around for lifetime stats)
-// doesn't get counted against a currently-existing task's status.
+// Both the total and the submission lookup are scoped to non-archived tasks -
+// this powers the annotator's own filter chips, and an archived task is
+// hidden from their task list entirely, so it shouldn't count here either.
 const getProjectTaskCountsForUser = async (userId, projectId) => {
   const [total, rows] = await Promise.all([
-    Task.countDocuments({ projectId }),
+    Task.countDocuments({ projectId, archivedAt: null }),
     TaskSubmission.aggregate([
       { $match: { projectId: oid(projectId), userId: oid(userId) } },
-      { $lookup: { from: Task.collection.name, localField: "taskId", foreignField: "_id", as: "task" } },
+      {
+        $lookup: {
+          from: Task.collection.name,
+          let: { taskId: "$taskId" },
+          pipeline: [{ $match: { $expr: { $eq: ["$_id", "$$taskId"] }, archivedAt: null } }],
+          as: "task",
+        },
+      },
       { $match: { "task.0": { $exists: true } } },
       { $group: { _id: "$status", n: { $sum: 1 } } },
     ]),
@@ -194,21 +205,24 @@ const getNextTaskForUser = async (userId, projectId) => {
     .select("taskId")
     .lean();
 
-  const next = await Task.findOne({ projectId, _id: { $nin: done.map((d) => d.taskId) } })
+  const next = await Task.findOne({ projectId, archivedAt: null, _id: { $nin: done.map((d) => d.taskId) } })
     .sort(TASK_ORDER)
     .select("_id")
     .lean();
   if (next) return { taskId: next._id, allFinished: false };
 
-  const first = await Task.findOne({ projectId }).sort(TASK_ORDER).select("_id").lean();
+  const first = await Task.findOne({ projectId, archivedAt: null }).sort(TASK_ORDER).select("_id").lean();
   return { taskId: first?._id || null, allFinished: !!first };
 };
 
 // Prev/next task ids + position + completion, for the task-detail screen -
 // replaces shipping the whole project task list to the client.
 const getTaskNavForUser = async (userId, projectId, currentTask) => {
+  // Archived tasks are excluded throughout, so prev/next never navigates the
+  // annotator into one and position/total reflect only their visible list.
   const before = {
     projectId,
+    archivedAt: null,
     $or: [
       { createdAt: { $lt: currentTask.createdAt } },
       { createdAt: currentTask.createdAt, _id: { $lt: currentTask._id } },
@@ -216,13 +230,14 @@ const getTaskNavForUser = async (userId, projectId, currentTask) => {
   };
   const after = {
     projectId,
+    archivedAt: null,
     $or: [
       { createdAt: { $gt: currentTask.createdAt } },
       { createdAt: currentTask.createdAt, _id: { $gt: currentTask._id } },
     ],
   };
   const [total, beforeCount, prev, next, completedCount] = await Promise.all([
-    Task.countDocuments({ projectId }),
+    Task.countDocuments({ projectId, archivedAt: null }),
     Task.countDocuments(before),
     Task.findOne(before).sort({ createdAt: -1, _id: -1 }).select("_id").lean(),
     Task.findOne(after).sort(TASK_ORDER).select("_id").lean(),
@@ -238,8 +253,13 @@ const getTaskNavForUser = async (userId, projectId, currentTask) => {
   };
 };
 
+// The single access gate every annotator read/write action goes through
+// (task detail, audio upload, verify, correct, discard, reconsider, time
+// tracking all call this first). Returning null for an archived task blocks
+// all of them, not just the task list - list-level filtering alone wouldn't
+// stop a direct id hit.
 const getTaskByIdForUser = async (taskId) => {
-  return Task.findById(taskId).lean();
+  return Task.findOne({ _id: taskId, archivedAt: null }).lean();
 };
 
 const getTaskSubmissionForUser = async (taskId, userId) => {
@@ -250,6 +270,7 @@ const saveAudio = async (
   taskId,
   projectId,
   userId,
+  dialogueId,
   {
     publicId,
     url,
@@ -268,6 +289,7 @@ const saveAudio = async (
         taskId,
         projectId,
         userId,
+        dialogueId,
         status,
         audioVerifiedAt: new Date(),
         "audio.provider": "cloudinary",
@@ -286,7 +308,7 @@ const saveAudio = async (
   );
 };
 
-const updateSubmissionVerification = async (taskId, projectId, userId, pinyinVerified) => {
+const updateSubmissionVerification = async (taskId, projectId, userId, dialogueId, pinyinVerified) => {
   return TaskSubmission.findOneAndUpdate(
     { taskId, userId },
     {
@@ -294,6 +316,7 @@ const updateSubmissionVerification = async (taskId, projectId, userId, pinyinVer
         taskId,
         projectId,
         userId,
+        dialogueId,
         pinyinVerified,
         status: pinyinVerified ? "verified" : "in-progress",
       },
@@ -306,6 +329,7 @@ const updateSubmissionCorrection = async (
   taskId,
   projectId,
   userId,
+  dialogueId,
   { correctedChineseTranscript, correctedPinyin, editCharCount = 0 }
 ) => {
   return TaskSubmission.findOneAndUpdate(
@@ -315,6 +339,7 @@ const updateSubmissionCorrection = async (
         taskId,
         projectId,
         userId,
+        dialogueId,
         correctedChineseTranscript,
         correctedPinyin,
         editCharCount,
@@ -329,7 +354,7 @@ const updateSubmissionCorrection = async (
   );
 };
 
-const markSubmissionDiscarded = async (taskId, projectId, userId) => {
+const markSubmissionDiscarded = async (taskId, projectId, userId, dialogueId) => {
   return TaskSubmission.findOneAndUpdate(
     { taskId, userId },
     {
@@ -337,6 +362,7 @@ const markSubmissionDiscarded = async (taskId, projectId, userId) => {
         taskId,
         projectId,
         userId,
+        dialogueId,
         status: "discarded",
         "discarded.flagged": true,
         "discarded.discardedAt": new Date(),
@@ -349,14 +375,14 @@ const markSubmissionDiscarded = async (taskId, projectId, userId) => {
 // Increment the annotator's wall-clock time on this task. Upserts a
 // submission stub if one doesn't exist yet (e.g. time recorded before any
 // verification action).
-const incrementTimeSpent = async (taskId, projectId, userId, deltaMs) => {
+const incrementTimeSpent = async (taskId, projectId, userId, dialogueId, deltaMs) => {
   const ms = Math.max(0, Math.round(Number(deltaMs) || 0));
   if (!ms) return null;
   return TaskSubmission.findOneAndUpdate(
     { taskId, userId },
     {
       $inc: { timeSpentMs: ms },
-      $setOnInsert: { taskId, projectId, userId, status: "in-progress" },
+      $setOnInsert: { taskId, projectId, userId, dialogueId, status: "in-progress" },
     },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );

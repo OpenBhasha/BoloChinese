@@ -81,6 +81,44 @@ const deleteAudioBulk = async (publicIds = []) => {
   logger.info(`Audio deleted from Cloudinary | ${ids.length} file(s)`);
 };
 
+// Per-id confirmed variant for the backup/cleanup flow: a submission is only
+// marked backed-up (and its parent task archived) once we KNOW its audio is
+// gone, so callers need to know exactly which ids succeeded vs. failed rather
+// than a single all-or-nothing outcome. A batch that throws (network/auth
+// error, no response at all) marks every id in that batch as failed so it's
+// retried on the next cleanup instead of being silently treated as purged.
+// "not_found" counts as success - the file's already gone either way.
+const deleteAudioBulkConfirmed = async (publicIds = []) => {
+  const ids = [...new Set(publicIds.filter(Boolean))];
+  if (!ids.length) return { succeeded: [], failed: [] };
+  assertConfigured();
+
+  const succeeded = [];
+  const failed = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const batch = ids.slice(i, i + 100);
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await cloudinary.api.delete_resources(batch, {
+        resource_type: "video",
+        invalidate: true,
+      });
+      const deletedMap = res.deleted || {};
+      batch.forEach((id) => {
+        const status = deletedMap[id];
+        if (status === "deleted" || status === "not_found") succeeded.push(id);
+        else failed.push(id);
+      });
+    } catch (err) {
+      logger.warn(`Cloudinary confirmed-delete failed for a batch of ${batch.length}: ${err.message}`);
+      failed.push(...batch);
+    }
+  }
+
+  logger.info(`Audio deleted from Cloudinary | ${succeeded.length} confirmed, ${failed.length} failed`);
+  return { succeeded, failed };
+};
+
 // Full sweep of every uploaded audio under the bolo/audio/ prefix. Used by the
 // admin database reset. Mirrors backend/reset.js's wipeCloudinary().
 const AUDIO_PREFIX = "bolo/audio/";
@@ -133,4 +171,4 @@ const getAudioStream = async (audioUrl) => {
   });
 };
 
-module.exports = { uploadAudio, deleteAudio, deleteAudioBulk, deleteAllAudio, getAudioStream };
+module.exports = { uploadAudio, deleteAudio, deleteAudioBulk, deleteAudioBulkConfirmed, deleteAllAudio, getAudioStream };

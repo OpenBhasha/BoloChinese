@@ -47,10 +47,10 @@ const downloadBackup = async (req, res, next) => {
 const runCleanup = async (req, res, next) => {
   try {
     if (req.body?.confirm !== "CLEANUP") {
-      return errorResponse(res, 'Type "CLEANUP" to confirm the wipe.', 400);
+      return errorResponse(res, 'Type "CLEANUP" to confirm the cleanup.', 400);
     }
     const stats = await cleanupSvc.runCleanup();
-    return successResponse(res, "Cleanup complete. Progress has been retained.", stats);
+    return successResponse(res, "Cleanup complete. Tasks and progress were kept - only their Cloudinary audio was removed.", stats);
   } catch (err) {
     if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
     next(err);

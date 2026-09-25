@@ -81,12 +81,22 @@ const taskSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    // Set once a backup+cleanup pass has confirmed every submission on this
+    // task is done and its audio purged from Cloudinary. An archived task is
+    // hidden from annotators and from the admin Tasks tab, but the row (and
+    // its submissions) is never deleted - it keeps counting toward progress.
+    archivedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
 
 // One dialogue per project - allows the same source dataset to be split across projects.
 taskSchema.index({ projectId: 1, dialogueId: 1 }, { unique: true });
+// Every annotator-facing query filters archived tasks out of a project's list.
+taskSchema.index({ projectId: 1, archivedAt: 1 });
 // Speeds up the project's task list and admin/user "tasks by project" lookups.
 taskSchema.index({ projectId: 1, createdAt: 1 });
 

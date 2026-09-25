@@ -120,7 +120,7 @@ const uploadTaskAudio = async (taskId, audioBuffer, userId, fileSize) => {
   const { publicId, url, fileSizeBytes } = await uploadAudio(audioBuffer, taskId, userId);
 
   const status = "completed";
-  await dao.saveAudio(taskId, existing.projectId, userId, {
+  await dao.saveAudio(taskId, existing.projectId, userId, existing.dialogueId, {
     publicId,
     url,
     fileSizeBytes,
@@ -139,7 +139,7 @@ const uploadTaskAudio = async (taskId, audioBuffer, userId, fileSize) => {
 
 const verifyPinyin = async (taskId, userId, correct) => {
   const existing = await getTaskDetail(taskId, userId);
-  await dao.updateSubmissionVerification(taskId, existing.projectId, userId, correct);
+  await dao.updateSubmissionVerification(taskId, existing.projectId, userId, existing.dialogueId, correct);
   return getTaskDetail(taskId, userId);
 };
 
@@ -154,7 +154,7 @@ const correctTranscript = async (taskId, userId, { correctedChineseTranscript, c
     );
   }
 
-  await dao.updateSubmissionCorrection(taskId, existing.projectId, userId, {
+  await dao.updateSubmissionCorrection(taskId, existing.projectId, userId, existing.dialogueId, {
     correctedChineseTranscript,
     correctedPinyin,
     editCharCount: distance,
@@ -164,7 +164,7 @@ const correctTranscript = async (taskId, userId, { correctedChineseTranscript, c
 
 const discardTask = async (taskId, userId) => {
   const existing = await getTaskDetail(taskId, userId);
-  await dao.markSubmissionDiscarded(taskId, existing.projectId, userId);
+  await dao.markSubmissionDiscarded(taskId, existing.projectId, userId, existing.dialogueId);
   logger.info(`Task ${taskId} discarded by user ${userId}.`);
   return getTaskDetail(taskId, userId);
 };
@@ -178,7 +178,7 @@ const reconsiderTask = async (taskId, userId) => {
 
 const recordTimeSpent = async (taskId, userId, deltaMs) => {
   const existing = await getTaskDetail(taskId, userId);
-  await dao.incrementTimeSpent(taskId, existing.projectId, userId, deltaMs);
+  await dao.incrementTimeSpent(taskId, existing.projectId, userId, existing.dialogueId, deltaMs);
   return { ok: true };
 };
 

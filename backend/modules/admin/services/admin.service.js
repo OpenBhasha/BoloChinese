@@ -355,8 +355,10 @@ const getAllProjects = async () => {
   if (!projects.length) return projects;
 
   const Task = require("../models/task.model");
+  // Matches what the project's Tasks tab actually lists - archived (backed
+  // up) tasks are excluded there, so the badge shouldn't overcount them.
   const counts = await Task.aggregate([
-    { $match: { projectId: { $in: projects.map((p) => p._id) } } },
+    { $match: { projectId: { $in: projects.map((p) => p._id) }, archivedAt: null } },
     { $group: { _id: "$projectId", count: { $sum: 1 } } },
   ]);
   const countByProject = new Map(counts.map((c) => [String(c._id), c.count]));
@@ -375,9 +377,10 @@ const getProjectById = async (id) => {
     err.statusCode = 404;
     throw err;
   }
-  // Attach taskCount without shipping the full task list.
+  // Attach taskCount without shipping the full task list. Matches the Tasks
+  // tab - archived (backed up) tasks are excluded there too.
   const Task = require("../models/task.model");
-  const taskCount = await Task.countDocuments({ projectId: id });
+  const taskCount = await Task.countDocuments({ projectId: id, archivedAt: null });
   const projectObj = project.toObject ? project.toObject() : project;
   projectObj.taskCount = taskCount;
   return projectObj;

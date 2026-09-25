@@ -196,7 +196,9 @@ const bulkCreateTasks = async (docs) => {
 // per-task $lookup that made this scale with project size instead of page size.
 const getTasksByProject = async (projectId, { page = 1, limit = 20, search } = {}) => {
   const skip = (page - 1) * limit;
-  const match = { projectId };
+  // Archived (backed-up) tasks are fully hidden from the Tasks tab - they're
+  // still reachable via the Submissions tab or a CSV export.
+  const match = { projectId, archivedAt: null };
   if (search) {
     const rx = new RegExp(escapeRegex(search), "i");
     match.$or = [{ taskId: rx }, { dialogueId: rx }, { chineseTranscript: rx }, { pinyin: rx }];
@@ -247,9 +249,11 @@ const updateTask = async (id, data) => {
 // Hard delete of the task definition only. Submissions (and any recorded
 // audio) are deliberately left alone - an annotator's completed work and
 // progress must survive even after the task itself is removed from a
-// project. Just strips the id off the project's `tasks` array.
+// project. Just strips the id off the project's `tasks` array. An already
+// archived (backed-up) task can't be hard-deleted this way - its data is
+// meant to be permanently retained, not removed via the manual delete path.
 const deleteTask = async (id) => {
-  const task = await Task.findById(id);
+  const task = await Task.findOne({ _id: id, archivedAt: null });
   if (!task) return { task: null };
 
   await Project.findByIdAndUpdate(task.projectId, { $pull: { tasks: id } });
@@ -260,15 +264,17 @@ const deleteTask = async (id) => {
 // Bulk-delete task definitions scoped to a single project. `all: true`
 // deletes every task in the project instead of an explicit id list - lets
 // "select all" in the UI skip shipping every id back to the server.
-// Submissions/audio are not touched - see deleteTask.
+// Submissions/audio are not touched - see deleteTask. Archived tasks are
+// excluded from `all` and silently skipped if explicitly listed in `ids` -
+// see deleteTask.
 const deleteTasksBulk = async (projectId, { ids = [], all = false } = {}) => {
-  const taskIds = all ? await Task.find({ projectId }).distinct("_id") : ids;
+  const taskIds = all ? await Task.find({ projectId, archivedAt: null }).distinct("_id") : ids;
   if (!taskIds.length) return { deletedCount: 0 };
 
-  const result = await Task.deleteMany({ _id: { $in: taskIds }, projectId });
+  const result = await Task.deleteMany({ _id: { $in: taskIds }, projectId, archivedAt: null });
   await Project.findByIdAndUpdate(
     projectId,
-    all ? { $set: { tasks: [] } } : { $pull: { tasks: { $in: taskIds } } }
+    all ? { $pull: { tasks: { $in: taskIds } } } : { $pull: { tasks: { $in: taskIds } } }
   );
   return { deletedCount: result.deletedCount || 0 };
 };
@@ -509,11 +515,16 @@ const getPerUserProgress = async () => {
 
 // ─── Finished-set + backup/cleanup ───────────────────────────────────────────
 
-// Task ids that are fully finished as of `cutoff`: at least one submission,
-// every submission terminal (completed/discarded), and none touched after the
-// cutoff. This is exactly what a backup exports and a cleanup deletes.
+// Task ids that are fully finished as of `cutoff`: at least one submission not
+// yet backed up, every not-yet-backed-up submission terminal (completed/
+// discarded), and none touched after the cutoff. The `backedUpAt: null` match
+// up front is what makes this idempotent - a submission already processed by
+// an earlier cleanup never gets reconsidered, so a task with e.g. 2 assignees
+// where only one has been swept so far is correctly re-offered (only the
+// straggler counts) rather than either skipped forever or reprocessed.
 const getFinishedTaskIds = async (cutoff) => {
   const rows = await TaskSubmission.aggregate([
+    { $match: { backedUpAt: null } },
     {
       $group: {
         _id: "$taskId",
@@ -545,7 +556,9 @@ const getBackupDataset = async (cutoff) => {
   const finishedTaskIds = await getFinishedTaskIds(cutoff);
   const [tasks, submissions, projects, users, assignments] = await Promise.all([
     Task.find({ _id: { $in: finishedTaskIds } }).lean(),
-    TaskSubmission.find({ taskId: { $in: finishedTaskIds } }).lean(),
+    // backedUpAt: null - a sibling submission on the same task that an
+    // earlier partial cleanup already backed up shouldn't reappear here.
+    TaskSubmission.find({ taskId: { $in: finishedTaskIds }, backedUpAt: null }).lean(),
     Project.find({}).select("name description createdBy createdAt").populate("createdBy", "name email").lean(),
     User.find({})
       .select("name email username phone role isVerified identityFlagged identityFlagReason dedicatedProjectId createdAt deletedAt")
@@ -555,77 +568,68 @@ const getBackupDataset = async (cutoff) => {
   return { cutoff, finishedTaskIds, tasks, submissions, projects, users, assignments };
 };
 
-// Snapshot the finished set into the ledger, then hard-delete it. `cutoff` must
-// be the timestamp of the backup the admin just took; `date` is the Kolkata day
-// the ledger rows are filed under. Returns a summary + the audio publicIds the
-// caller must purge from Cloudinary.
-const runCleanupDeletion = async ({ cutoff, date }) => {
+// The not-yet-backed-up submissions in the finished set as of `cutoff` - what
+// a cleanup is about to process. Returns bare data only; the caller (cleanup
+// service) does the actual Cloudinary calls and reports back which ids
+// succeeded so finalizeCleanup can commit exactly those.
+const getCleanupCandidates = async (cutoff) => {
   const finishedTaskIds = await getFinishedTaskIds(cutoff);
-  if (!finishedTaskIds.length) {
-    return { date, tasksDeleted: 0, submissionsDeleted: 0, usersSnapshotted: 0, audioPublicIds: [] };
-  }
+  if (!finishedTaskIds.length) return { submissions: [] };
 
-  const submissions = await TaskSubmission.find({ taskId: { $in: finishedTaskIds } })
-    .select("taskId userId status pinyinVerified isCorrected audio.url audio.publicId audio.durationSeconds timeSpentMs")
+  const submissions = await TaskSubmission.find({
+    taskId: { $in: finishedTaskIds },
+    backedUpAt: null,
+  })
+    .select("taskId userId audio.publicId")
     .lean();
 
-  const perUser = new Map();
-  for (const s of submissions) {
-    const key = s.userId.toString();
-    const acc = perUser.get(key) || { userId: s.userId, ...zeroProgress() };
-    acc.assigned += 1;
-    acc.submitted += 1;
-    if (s.status === "completed") acc.completed += 1;
-    if (s.status === "discarded") acc.discarded += 1;
-    if (s.isCorrected) acc.edited += 1;
-    if (s.pinyinVerified === true) acc.validated += 1;
-    if (s.audio && s.audio.url) acc.recorded += 1;
-    acc.audioDurationSeconds += Number(s.audio?.durationSeconds || 0);
-    acc.timeSpentMs += Number(s.timeSpentMs || 0);
-    perUser.set(key, acc);
-  }
-
-  // $inc so a second cleanup on the same Kolkata day accumulates.
-  await Promise.all(
-    [...perUser.values()].map((acc) =>
-      UserProgress.updateOne(
-        { userId: acc.userId, date },
-        {
-          $inc: {
-            assigned: acc.assigned,
-            submitted: acc.submitted,
-            completed: acc.completed,
-            discarded: acc.discarded,
-            edited: acc.edited,
-            validated: acc.validated,
-            recorded: acc.recorded,
-            audioDurationSeconds: Math.round(acc.audioDurationSeconds),
-            timeSpentMs: Math.round(acc.timeSpentMs),
-            tasksDeleted: acc.assigned,
-            audioFilesDeleted: acc.recorded,
-          },
-        },
-        { upsert: true }
-      )
-    )
-  );
-
-  const audioPublicIds = submissions.map((s) => s.audio?.publicId).filter(Boolean);
-
-  const subDel = await TaskSubmission.deleteMany({ taskId: { $in: finishedTaskIds } });
-  await Task.deleteMany({ _id: { $in: finishedTaskIds } });
-  await Project.updateMany(
-    { tasks: { $in: finishedTaskIds } },
-    { $pull: { tasks: { $in: finishedTaskIds } } }
-  );
-
   return {
-    date,
-    tasksDeleted: finishedTaskIds.length,
-    submissionsDeleted: subDel.deletedCount || 0,
-    usersSnapshotted: perUser.size,
-    audioPublicIds,
+    submissions: submissions.map((s) => ({
+      _id: s._id,
+      taskId: s.taskId,
+      userId: s.userId,
+      publicId: s.audio?.publicId || null,
+    })),
   };
+};
+
+// Commits the outcome of a cleanup pass: marks exactly `succeededIds` as
+// backed up (audio purge confirmed, or nothing to purge) and clears their
+// stale audio pointers, then archives every affected task that now has zero
+// remaining not-backed-up submissions. Nothing is deleted - a task/submission
+// that isn't in `succeededIds` (its Cloudinary purge failed) is left
+// untouched and gets picked up again by the next cleanup.
+const finalizeCleanup = async ({ cutoff, succeededIds }) => {
+  if (!succeededIds.length) return { tasksArchived: 0, usersInvolved: 0 };
+
+  const succeeded = await TaskSubmission.find({ _id: { $in: succeededIds } })
+    .select("taskId userId")
+    .lean();
+  const taskIds = [...new Set(succeeded.map((s) => String(s.taskId)))].map(
+    (id) => new mongoose.Types.ObjectId(id)
+  );
+  const usersInvolved = new Set(succeeded.map((s) => String(s.userId))).size;
+
+  await TaskSubmission.updateMany(
+    { _id: { $in: succeededIds } },
+    { $set: { backedUpAt: cutoff, "audio.url": null, "audio.publicId": null } }
+  );
+
+  // A task is only archivable once EVERY submission on it (not just the ones
+  // just processed) is backed up - e.g. a multi-assignee task where one
+  // annotator's Cloudinary purge failed this round must stay visible.
+  const remaining = await TaskSubmission.aggregate([
+    { $match: { taskId: { $in: taskIds } } },
+    { $group: { _id: "$taskId", left: { $sum: { $cond: [{ $eq: ["$backedUpAt", null] }, 1, 0] } } } },
+  ]);
+  const stillOpen = new Set(remaining.filter((r) => r.left > 0).map((r) => String(r._id)));
+  const toArchive = taskIds.filter((id) => !stillOpen.has(String(id)));
+
+  const archiveResult = toArchive.length
+    ? await Task.updateMany({ _id: { $in: toArchive } }, { $set: { archivedAt: cutoff } })
+    : { modifiedCount: 0 };
+
+  return { tasksArchived: archiveResult.modifiedCount || 0, usersInvolved };
 };
 
 // ─── Backup <-> cleanup handshake state (singleton) ──────────────────────────
@@ -650,13 +654,16 @@ const setCleanupCompleted = async ({ stats }) =>
     { new: true, upsert: true, setDefaultsOnInsert: true }
   ).lean();
 
-// Lightweight counts for the dashboard card (what a cleanup would remove now).
+// Lightweight counts for the dashboard card (what a cleanup would archive/purge
+// now). `backedUpAt: null` matches what a cleanup itself would touch - without
+// it, a task with one assignee already backed up in an earlier partial cleanup
+// would double-count that assignee's (already purged) submission here too.
 const getFinishedSetSummary = async (cutoff) => {
   const finishedTaskIds = await getFinishedTaskIds(cutoff);
   if (!finishedTaskIds.length) return { finishedTasks: 0, finishedSubmissions: 0, audioFiles: 0 };
   const [finishedSubmissions, audioFiles] = await Promise.all([
-    TaskSubmission.countDocuments({ taskId: { $in: finishedTaskIds } }),
-    TaskSubmission.countDocuments({ taskId: { $in: finishedTaskIds }, "audio.publicId": { $ne: null } }),
+    TaskSubmission.countDocuments({ taskId: { $in: finishedTaskIds }, backedUpAt: null }),
+    TaskSubmission.countDocuments({ taskId: { $in: finishedTaskIds }, backedUpAt: null, "audio.publicId": { $ne: null } }),
   ]);
   return { finishedTasks: finishedTaskIds.length, finishedSubmissions, audioFiles };
 };
@@ -780,7 +787,8 @@ const getDashboardStats = async () => {
   // cascade to submissions, but a single task delete deliberately doesn't
   // (progress must survive it) - either way every remaining submission's
   // projectId still points at a live project, so no orphan scoping needed
-  // here.
+  // here. "Total Tasks" counts only non-archived tasks - an archived task is
+  // done-and-hidden, not part of the current live workload.
   const activeUsers = await User.find({ deletedAt: null }).select("_id isVerified identityFlagged").lean();
   const activeUserIds = activeUsers.map((u) => u._id);
 
@@ -789,7 +797,7 @@ const getDashboardStats = async () => {
   const today = kolkataDate();
   const [totalProjects, totalTasks, submissionsByStatus, metrics, ledgerAll, ledgerToday] = await Promise.all([
     Project.countDocuments(),
-    Task.estimatedDocumentCount(),
+    Task.countDocuments({ archivedAt: null }),
     TaskSubmission.aggregate([
       { $match: submissionMatch },
       { $group: { _id: "$status", count: { $sum: 1 } } },
@@ -917,7 +925,8 @@ module.exports = {
   getLedgerRowsForUser,
   getFinishedTaskIds,
   getBackupDataset,
-  runCleanupDeletion,
+  getCleanupCandidates,
+  finalizeCleanup,
   getBackupState,
   setBackupCompleted,
   setCleanupCompleted,

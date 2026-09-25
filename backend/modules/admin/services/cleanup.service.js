@@ -1,17 +1,25 @@
 /**
- * Post-backup wipe. Deletes the finished set (completed/discarded tasks that
- * were already frozen into the last backup), after folding each annotator's
- * finished counts into the permanent progress ledger. Unfinished work and the
- * ledger itself are left alone.
+ * Post-backup sweep. Nothing is deleted from the database: every finished
+ * task/submission (completed/discarded, already frozen into the last backup)
+ * has its Cloudinary audio purged and is then marked archived/backed-up so it
+ * disappears from the annotator's task list. Progress keeps reading straight
+ * off these same rows forever - there's no separate ledger write here, since
+ * nothing is being destroyed that would otherwise be lost.
  *
- * Refuses to run unless there is a backup newer than the last cleanup, and uses
- * that backup's cutoff as the delete high-water mark - anything finished after
- * the backup waits for the next cycle, so nothing is deleted that was not
- * archived first.
+ * Refuses to run unless there is a backup newer than the last cleanup, and
+ * uses that backup's cutoff as the high-water mark - anything finished after
+ * the backup waits for the next cycle, so audio is never purged before it's
+ * been archived.
+ *
+ * A submission's Cloudinary purge is confirmed per-id: only ids Cloudinary
+ * actually reports as deleted (or already gone) get marked backed-up. A
+ * failure leaves that submission untouched so the next cleanup retries it -
+ * nothing is ever marked "backed up" while its audio might still be sitting
+ * on Cloudinary.
  */
 const dao = require("../dao/admin.dao");
 const logger = require("../../../logging/logger");
-const { deleteAudioBulk } = require("../../../services/cloudinary.service");
+const { deleteAudioBulkConfirmed } = require("../../../services/cloudinary.service");
 const { kolkataDate } = require("../../../services/datetime");
 const lock = require("./backupLock");
 
@@ -41,35 +49,51 @@ const runCleanup = async () => {
     const cutoff = new Date(state.lastBackupAt);
     const date = kolkataDate(cutoff);
 
-    const result = await dao.runCleanupDeletion({ cutoff, date });
+    const { submissions } = await dao.getCleanupCandidates(cutoff);
+    if (!submissions.length) {
+      const stats = { date, tasksArchived: 0, submissionsBackedUp: 0, audioPurged: 0, audioFailed: 0, usersInvolved: 0 };
+      await dao.setCleanupCompleted({ stats });
+      return stats;
+    }
 
-    let audioDeleted = 0;
-    let audioError = null;
-    if (result.audioPublicIds.length) {
+    const withAudio = submissions.filter((s) => s.publicId);
+    const withoutAudio = submissions.filter((s) => !s.publicId);
+
+    let succeededPublicIds = new Set();
+    let audioFailed = 0;
+    if (withAudio.length) {
       try {
-        await deleteAudioBulk(result.audioPublicIds);
-        audioDeleted = result.audioPublicIds.length;
+        const result = await deleteAudioBulkConfirmed(withAudio.map((s) => s.publicId));
+        succeededPublicIds = new Set(result.succeeded);
+        audioFailed = result.failed.length;
       } catch (err) {
-        audioError = err.message;
-        logger.warn(
-          `cleanup: Cloudinary purge failed for ${result.audioPublicIds.length} file(s): ${err.message}`
-        );
+        // Cloudinary not configured, or every batch errored - nothing purged
+        // this round; every audio-bearing submission is left for a retry.
+        audioFailed = withAudio.length;
+        logger.warn(`cleanup: Cloudinary purge unavailable: ${err.message}`);
       }
     }
 
+    const succeededIds = [
+      ...withoutAudio.map((s) => s._id),
+      ...withAudio.filter((s) => succeededPublicIds.has(s.publicId)).map((s) => s._id),
+    ];
+
+    const { tasksArchived, usersInvolved } = await dao.finalizeCleanup({ cutoff, succeededIds });
+
     const stats = {
       date,
-      tasksDeleted: result.tasksDeleted,
-      submissionsDeleted: result.submissionsDeleted,
-      usersSnapshotted: result.usersSnapshotted,
-      audioDeleted,
-      audioError,
+      tasksArchived,
+      submissionsBackedUp: succeededIds.length,
+      audioPurged: succeededPublicIds.size,
+      audioFailed,
+      usersInvolved,
     };
 
     await dao.setCleanupCompleted({ stats });
     logger.info(
-      `Cleanup done | ${date} | ${stats.tasksDeleted} tasks, ${stats.submissionsDeleted} submissions, ` +
-        `${audioDeleted} audio purged`
+      `Cleanup done | ${date} | ${stats.tasksArchived} tasks archived, ${stats.submissionsBackedUp} submissions ` +
+        `backed up, ${stats.audioPurged} audio purged (${stats.audioFailed} failed)`
     );
     return stats;
   } finally {

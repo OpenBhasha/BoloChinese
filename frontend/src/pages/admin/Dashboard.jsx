@@ -64,7 +64,7 @@ export default function AdminDashboard() {
     try {
       const res = await runCleanup();
       const s = res.data.data;
-      toast.success(`Cleaned up ${s.tasksDeleted} task(s). Progress retained.`);
+      toast.success(`Archived ${s.tasksArchived} task(s), purged ${s.audioPurged} audio file(s). Progress retained.`);
       setCleanupOpen(false);
       setCleanupText("");
       await Promise.all([loadDashboard(), loadBackup()]);
@@ -168,8 +168,9 @@ export default function AdminDashboard() {
               <div>
                 <h2 className="text-sm font-semibold text-primary-500 uppercase tracking-wide">Backup &amp; Cleanup</h2>
                 <p className="text-primary-400 text-sm mt-1">
-                  Download the day's finished tasks, audio, and progress, then wipe them.
-                  Progress totals are kept forever; unfinished tasks stay for the annotator.
+                  Download the day's finished tasks, audio, and progress, then clean up.
+                  Cleanup only deletes the audio from Cloudinary - tasks, submissions, and
+                  progress are kept, just hidden from the annotator. Unfinished tasks are untouched.
                 </p>
               </div>
             </div>
@@ -204,8 +205,8 @@ export default function AdminDashboard() {
             {backup?.lastCleanupAt && (
               <p className="text-xs text-primary-400 mb-4">
                 Last cleanup: {formatDateTime(backup.lastCleanupAt)}
-                {backup.lastCleanupStats?.tasksDeleted != null
-                  ? ` · removed ${backup.lastCleanupStats.tasksDeleted} task(s)`
+                {backup.lastCleanupStats?.tasksArchived != null
+                  ? ` · archived ${backup.lastCleanupStats.tasksArchived} task(s), purged ${backup.lastCleanupStats.audioPurged ?? 0} audio file(s)`
                   : ""}
               </p>
             )}
@@ -277,9 +278,10 @@ export default function AdminDashboard() {
         <Modal title="Clean up finished tasks & audio" onClose={() => !cleanupBusy && setCleanupOpen(false)} size="sm">
           <div className="space-y-4">
             <p className="text-sm text-primary-600">
-              This permanently deletes <strong>{pending.finishedTasks ?? 0} finished task(s)</strong>,{" "}
-              {pending.finishedSubmissions ?? 0} submission(s), and {pending.audioFiles ?? 0} audio file(s).
-              Their counts are folded into each annotator's permanent progress first. Unfinished tasks are untouched.
+              This permanently deletes <strong>{pending.audioFiles ?? 0} audio file(s)</strong> from
+              Cloudinary for {pending.finishedTasks ?? 0} finished task(s) ({pending.finishedSubmissions ?? 0}{" "}
+              submission(s)). The tasks and submissions themselves are kept and still count toward
+              progress - they're just hidden from the annotator. Unfinished tasks are untouched.
             </p>
             {backup?.lastBackupHadErrors && (
               <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -307,7 +309,7 @@ export default function AdminDashboard() {
                 onClick={handleCleanup}
                 disabled={cleanupBusy || cleanupText !== "CLEANUP"}
               >
-                {cleanupBusy ? "Cleaning…" : "Delete & keep progress"}
+                {cleanupBusy ? "Cleaning…" : "Archive & purge audio"}
               </button>
             </div>
           </div>

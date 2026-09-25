@@ -1,7 +1,7 @@
 /**
  * Streams a .zip backup of the *finished set* (tasks whose every submission is
- * completed/discarded, untouched since the backup cutoff) straight to the HTTP
- * response - no temp files, no server-side copy.
+ * completed/discarded, untouched since the backup cutoff, and not already
+ * backed up) straight to the HTTP response - no temp files, no server-side copy.
  *
  *   <YYYY-MM-DD>/                         Asia/Kolkata calendar day
  *     README.txt
@@ -13,11 +13,23 @@
  *     <username>/
  *       submissions.csv
  *       progress.csv                      that user's daily ledger + a live row
- *       audio/TASK-0042.wav
- *     _orphaned/submissions.csv           submissions whose user/task vanished
+ *       audio/<dialogueId>.wav            named by dialogue id, not task id
+ *     _orphaned/
+ *       submissions.csv                   submissions whose user/task vanished
+ *       audio/<dialogueId-or-fallback>.wav
+ *
+ * Audio filenames are the sanitized dialogueId (collision-suffixed within a
+ * folder), since that's the id the source dataset actually uses - falls back
+ * to the submission's own dialogueId snapshot (see the TaskSubmission model)
+ * when the parent Task is already gone, and to a generic name as a last
+ * resort if even that was never captured.
  *
  * On a clean delivery it stamps BackupState.lastBackupAt = cutoff, which is
- * what the cleanup endpoint later uses as its delete high-water mark.
+ * what the cleanup endpoint later uses as its purge high-water mark. Cleanup
+ * no longer deletes tasks or submissions - it archives them (hides them from
+ * annotators) and purges their Cloudinary audio, so nothing here is a "last
+ * chance" copy of data that's about to disappear from the database, only of
+ * audio that's about to be permanently deleted from Cloudinary.
  */
 const archiver = require("archiver");
 const dao = require("../dao/admin.dao");
@@ -147,7 +159,7 @@ annotator to continue.
 
 Layout
   progress.csv          Every annotator. today_* and lifetime_* columns.
-                        Lifetime = this backup + every earlier wiped batch.
+                        Lifetime = this backup + every earlier backed-up batch.
   users.csv             Identity for each username directory below.
   projects.csv          Projects and their assignees.
   tasks.csv             Every finished task with its source Chinese + pinyin.
@@ -155,14 +167,19 @@ Layout
   <username>/
     submissions.csv     That annotator's finished submissions.
     progress.csv        One row per past cleanup day, then a "current" row for
-                        work not yet wiped.
-    audio/TASK-XXXX.wav Mono 16 kHz 16-bit PCM WAV, named by task id.
+                        work not yet backed up.
+    audio/<dialogueId>.wav  Mono 16 kHz 16-bit PCM WAV, named by dialogue id.
   audio_errors.csv      Present only if a wav could not be downloaded. If you
                         see this file, do NOT run the cleanup yet.
-  _orphaned/            Submissions whose user or task record was already gone.
+  _orphaned/            Submissions whose user or task record was already gone
+                        (from the separate manual task-delete feature, not
+                        this backup/cleanup flow). Audio filenames fall back
+                        to a generic name here if no dialogue id survived.
 
 manifest.json has the exact counts and the cutoff timestamp this backup was
-taken at. The cleanup deletes exactly this set.
+taken at. The cleanup that follows archives exactly this set (hides it from
+annotators) and purges its audio from Cloudinary - the task and submission
+rows themselves are kept, not deleted.
 `;
 
 // username -> safe directory segment
@@ -172,6 +189,33 @@ const sanitizeDir = (name) =>
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^[-.]+|[-.]+$/g, "");
+
+// dialogueId is free text up to 200 chars and only unique per-project, so an
+// audio filename built from it needs both filesystem sanitizing (case is
+// preserved - unlike usernames, it may be meaningful) and collision handling
+// within a single folder.
+const sanitizeAudioName = (name) =>
+  String(name || "")
+    .trim()
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\\/:*?"<>|\x00-\x1f]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/^[-.]+|[-.]+$/g, "")
+    .slice(0, 120);
+
+// Turns a list of desired base names into unique ".wav" filenames for one
+// folder - "-2", "-3", ... on any collision (duplicate dialogueId across two
+// projects the same annotator is on, or two different ids that sanitize to
+// the same string).
+const uniqueAudioNames = (bases) => {
+  const seen = new Map();
+  return bases.map((base) => {
+    const clean = sanitizeAudioName(base) || "audio";
+    const count = (seen.get(clean) || 0) + 1;
+    seen.set(clean, count);
+    return count === 1 ? `${clean}.wav` : `${clean}-${count}.wav`;
+  });
+};
 
 const runBackup = async (res) => {
   lock.acquire("backup");
@@ -224,10 +268,9 @@ const runBackup = async (res) => {
       const t = taskById.get(String(s.taskId));
       const u = userById.get(String(s.userId));
       const p = projectById.get(String(s.projectId));
-      const hasAudio = !!(s.audio && s.audio.url);
       return {
         taskId: t?.taskId || "",
-        dialogueId: t?.dialogueId || "",
+        dialogueId: t?.dialogueId || s.dialogueId || "",
         projectName: p?.name || "",
         username: u?.username || u?.email || "",
         status: s.status,
@@ -239,7 +282,10 @@ const runBackup = async (res) => {
         correctedPinyin: s.correctedPinyin || "",
         editCharCount: s.editCharCount || 0,
         discardedAt: iso(s.discarded?.discardedAt),
-        audioFile: hasAudio && t?.taskId ? `${t.taskId}.wav` : "",
+        // Filled in below once collision-safe filenames are resolved per
+        // folder - kept blank here so it can never drift from what's
+        // actually written into the zip.
+        audioFile: "",
         audioDurationSeconds: s.audio?.durationSeconds || 0,
         audioSampleRate: s.audio?.sampleRate || "",
         audioBitDepth: s.audio?.bitDepth || "",
@@ -316,21 +362,50 @@ const runBackup = async (res) => {
       createdAt: iso(t.createdAt),
     });
 
-    // Group submissions by user; anything unresolvable goes to _orphaned.
+    // Group submissions by user; anything unresolvable goes to _orphaned. Each
+    // entry also carries its own copy of `row` (same object reference the
+    // root submissions.csv below will use), so filling in `row.audioFile`
+    // once filenames are resolved updates every CSV that references it.
     const byUser = new Map();
     const orphans = [];
+    const rowsInOrder = [];
     ds.submissions.forEach((s) => {
       const u = userById.get(String(s.userId));
       const t = taskById.get(String(s.taskId));
       const row = shapeSub(s);
+      rowsInOrder.push(row);
+      const hasAudio = !!(s.audio && s.audio.url);
+      const entry = {
+        row,
+        submission: s,
+        task: t,
+        hasAudio,
+        dialogueIdForFile: t?.dialogueId || s.dialogueId || "",
+      };
       if (!u || !t) {
-        orphans.push(row);
+        orphans.push(entry);
         return;
       }
       const k = String(s.userId);
       if (!byUser.has(k)) byUser.set(k, []);
-      byUser.get(k).push({ row, submission: s, task: t });
+      byUser.get(k).push(entry);
     });
+
+    // Resolve final, collision-safe audio filenames per folder (each user's
+    // own folder, plus the shared _orphaned bucket) and stamp them onto both
+    // the CSV row and the entry - so the archive entry written into the zip
+    // and every CSV mention of it can never disagree.
+    const resolveAudioNames = (entries) => {
+      const withAudio = entries.filter((e) => e.hasAudio);
+      if (!withAudio.length) return;
+      const names = uniqueAudioNames(withAudio.map((e) => e.dialogueIdForFile));
+      withAudio.forEach((e, i) => {
+        e.audioFilename = names[i];
+        e.row.audioFile = names[i];
+      });
+    };
+    byUser.forEach((entries) => resolveAudioNames(entries));
+    resolveAudioNames(orphans);
 
     // ── start streaming ──
     archive = archiver("zip", { zlib: { level: 9 } });
@@ -346,7 +421,33 @@ const runBackup = async (res) => {
     let audioFiles = 0;
     let audioBytes = 0;
 
-    archive.append(csv(SUBMISSION_COLS, ds.submissions.map(shapeSub)), { name: P("submissions.csv") });
+    // Downloads audio for every entry that has it, into `<folderPrefix>/`,
+    // using each entry's already-resolved `audioFilename`. Shared between the
+    // per-user loop and the orphaned bucket so both get identical handling.
+    const downloadAudioFor = async (entries, folderPrefix, errorLabel) => {
+      for (const e of entries) {
+        if (!e.hasAudio) continue;
+        const url = e.submission.audio?.url;
+        if (!url) continue;
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const buf = await fetchAudioBuffer(url);
+          archive.append(buf, { name: P(`${folderPrefix}/${e.audioFilename}`) });
+          audioFiles += 1;
+          audioBytes += buf.length;
+        } catch (err) {
+          failed.push({
+            taskId: e.task?.taskId || e.dialogueIdForFile || "",
+            username: errorLabel,
+            audioUrl: url,
+            error: err.message,
+          });
+          logger.warn(`backup: audio download failed for ${e.audioFilename}: ${err.message}`);
+        }
+      }
+    };
+
+    archive.append(csv(SUBMISSION_COLS, rowsInOrder), { name: P("submissions.csv") });
 
     for (const [userId, entries] of byUser) {
       const dir = dirFor(userId);
@@ -370,7 +471,7 @@ const runBackup = async (res) => {
         audioFilesDeleted: r.audioFilesDeleted,
       }));
       progressRows.push({
-        date: "current (live, not yet wiped)",
+        date: "current (live, not yet backed up)",
         assigned: "",
         submitted: live.submitted || 0,
         completed: live.completed || 0,
@@ -385,24 +486,13 @@ const runBackup = async (res) => {
       });
       archive.append(csv(USER_PROGRESS_COLS, progressRows), { name: P(`${dir}/progress.csv`) });
 
-      for (const e of entries) {
-        const url = e.submission.audio?.url;
-        if (!url || !e.task.taskId) continue;
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          const buf = await fetchAudioBuffer(url);
-          archive.append(buf, { name: P(`${dir}/audio/${e.task.taskId}.wav`) });
-          audioFiles += 1;
-          audioBytes += buf.length;
-        } catch (err) {
-          failed.push({ taskId: e.task.taskId, username: dir, audioUrl: url, error: err.message });
-          logger.warn(`backup: audio download failed for ${e.task.taskId}: ${err.message}`);
-        }
-      }
+      // eslint-disable-next-line no-await-in-loop
+      await downloadAudioFor(entries, `${dir}/audio`, dir);
     }
 
     if (orphans.length) {
-      archive.append(csv(SUBMISSION_COLS, orphans), { name: P("_orphaned/submissions.csv") });
+      archive.append(csv(SUBMISSION_COLS, orphans.map((e) => e.row)), { name: P("_orphaned/submissions.csv") });
+      await downloadAudioFor(orphans, "_orphaned/audio", "orphaned");
     }
 
     archive.append(csv(ROOT_PROGRESS_COLS, perUserProgress.map(shapeRootProgress)), { name: P("progress.csv") });
