@@ -367,7 +367,10 @@ const getLiveProgressByUser = async (userIds) => {
         validated: { $sum: { $cond: [{ $eq: ["$pinyinVerified", true] }, 1, 0] } },
         edited: { $sum: { $cond: [{ $eq: ["$isCorrected", true] }, 1, 0] } },
         discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
-        recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
+        // audio.uploadedAt, not audio.url - cleanup clears the url once the
+        // Cloudinary file is purged, but "was this ever recorded" is a
+        // lifetime fact that must survive that, same as status/pinyinVerified.
+        recorded: { $sum: { $cond: [{ $ifNull: ["$audio.uploadedAt", false] }, 1, 0] } },
         completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
         audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
         timeSpentMs: { $sum: { $ifNull: ["$timeSpentMs", 0] } },
@@ -810,7 +813,8 @@ const getDashboardStats = async () => {
           validated: { $sum: { $cond: [{ $eq: ["$pinyinVerified", true] }, 1, 0] } },
           edited: { $sum: { $cond: [{ $eq: ["$isCorrected", true] }, 1, 0] } },
           discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
-          recorded: { $sum: { $cond: [{ $ifNull: ["$audio.url", false] }, 1, 0] } },
+          // audio.uploadedAt, not audio.url - see getLiveProgressByUser.
+          recorded: { $sum: { $cond: [{ $ifNull: ["$audio.uploadedAt", false] }, 1, 0] } },
           audioDurationSeconds: { $sum: { $ifNull: ["$audio.durationSeconds", 0] } },
           // Averaged only across submissions where a duration was actually
           // captured, so pending / discarded rows don't drag the mean to 0.
