@@ -217,6 +217,29 @@ const uniqueAudioNames = (bases) => {
   });
 };
 
+// A large dataset here means many small per-sentence clips, not one big
+// file - thousands of them, each needing its own round trip to Cloudinary.
+// Fetched one at a time that's minutes of dead time before the zip stream
+// even finishes; this many in flight keeps peak memory bounded (each buffer
+// is small, so worst case is roughly this count x one clip's size) while
+// cutting that phase's wall-clock time by close to the same factor.
+const AUDIO_FETCH_CONCURRENCY = 12;
+
+// Runs `fn` over `items` with at most `limit` in flight at once. Completion
+// order doesn't matter to any caller here - each job appends its own file to
+// the archive and reports its own success/failure independently.
+const runWithConcurrency = async (items, limit, fn) => {
+  let index = 0;
+  const worker = async () => {
+    while (index < items.length) {
+      const i = index++;
+      // eslint-disable-next-line no-await-in-loop
+      await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+};
+
 const runBackup = async (res) => {
   lock.acquire("backup");
   const startedAt = new Date();
@@ -421,30 +444,14 @@ const runBackup = async (res) => {
     let audioFiles = 0;
     let audioBytes = 0;
 
-    // Downloads audio for every entry that has it, into `<folderPrefix>/`,
-    // using each entry's already-resolved `audioFilename`. Shared between the
-    // per-user loop and the orphaned bucket so both get identical handling.
-    const downloadAudioFor = async (entries, folderPrefix, errorLabel) => {
-      for (const e of entries) {
-        if (!e.hasAudio) continue;
-        const url = e.submission.audio?.url;
-        if (!url) continue;
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          const buf = await fetchAudioBuffer(url);
-          archive.append(buf, { name: P(`${folderPrefix}/${e.audioFilename}`) });
-          audioFiles += 1;
-          audioBytes += buf.length;
-        } catch (err) {
-          failed.push({
-            taskId: e.task?.taskId || e.dialogueIdForFile || "",
-            username: errorLabel,
-            audioUrl: url,
-            error: err.message,
-          });
-          logger.warn(`backup: audio download failed for ${e.audioFilename}: ${err.message}`);
-        }
-      }
+    // Collected while writing the per-user/orphan CSVs below, then fetched
+    // together in one bounded-concurrency pass - see AUDIO_FETCH_CONCURRENCY.
+    const audioJobs = [];
+    const queueAudio = (entries, folderPrefix, errorLabel) => {
+      entries.forEach((e) => {
+        if (!e.hasAudio || !e.submission.audio?.url) return;
+        audioJobs.push({ entry: e, folderPrefix, errorLabel });
+      });
     };
 
     archive.append(csv(SUBMISSION_COLS, rowsInOrder), { name: P("submissions.csv") });
@@ -486,14 +493,31 @@ const runBackup = async (res) => {
       });
       archive.append(csv(USER_PROGRESS_COLS, progressRows), { name: P(`${dir}/progress.csv`) });
 
-      // eslint-disable-next-line no-await-in-loop
-      await downloadAudioFor(entries, `${dir}/audio`, dir);
+      queueAudio(entries, `${dir}/audio`, dir);
     }
 
     if (orphans.length) {
       archive.append(csv(SUBMISSION_COLS, orphans.map((e) => e.row)), { name: P("_orphaned/submissions.csv") });
-      await downloadAudioFor(orphans, "_orphaned/audio", "orphaned");
+      queueAudio(orphans, "_orphaned/audio", "orphaned");
     }
+
+    await runWithConcurrency(audioJobs, AUDIO_FETCH_CONCURRENCY, async ({ entry, folderPrefix, errorLabel }) => {
+      const url = entry.submission.audio.url;
+      try {
+        const buf = await fetchAudioBuffer(url);
+        archive.append(buf, { name: P(`${folderPrefix}/${entry.audioFilename}`) });
+        audioFiles += 1;
+        audioBytes += buf.length;
+      } catch (err) {
+        failed.push({
+          taskId: entry.task?.taskId || entry.dialogueIdForFile || "",
+          username: errorLabel,
+          audioUrl: url,
+          error: err.message,
+        });
+        logger.warn(`backup: audio download failed for ${entry.audioFilename}: ${err.message}`);
+      }
+    });
 
     archive.append(csv(ROOT_PROGRESS_COLS, perUserProgress.map(shapeRootProgress)), { name: P("progress.csv") });
     archive.append(csv(USERS_COLS, ds.users.map(shapeUser)), { name: P("users.csv") });
