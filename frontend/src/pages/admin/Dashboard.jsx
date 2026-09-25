@@ -222,13 +222,15 @@ export default function AdminDashboard() {
               <div className="mb-4">
                 <div className="h-1.5 w-full max-w-xs rounded-full bg-primary-100 overflow-hidden">
                   <div
-                    className={`h-full bg-primary-600 transition-all duration-300 ${isFinalizing ? "animate-pulse w-full" : ""}`}
-                    style={isFinalizing ? undefined : { width: `${backupProgress.percent}%` }}
+                    className={`h-full bg-primary-600 transition-all duration-300 ${backupProgress.percent === null ? "animate-pulse w-full" : ""}`}
+                    style={backupProgress.percent === null ? undefined : { width: `${backupProgress.percent}%` }}
                   />
                 </div>
                 <p className="text-xs text-primary-400 mt-1">
-                  {isFinalizing
-                    ? "Compressing and streaming the zip…"
+                  {backupProgress.percent === null
+                    ? "Finalizing…"
+                    : isFinalizing
+                    ? `Finalizing (compressing & streaming)… ${backupProgress.done}/${backupProgress.total} (${backupProgress.percent}%)`
                     : `Fetching audio… ${backupProgress.done}/${backupProgress.total} (${backupProgress.percent}%)`}
                 </p>
               </div>
@@ -243,9 +245,7 @@ export default function AdminDashboard() {
               >
                 <Archive size={16} />{" "}
                 {backupBusy
-                  ? isFinalizing
-                    ? "Finalizing…"
-                    : `Preparing…${backupProgress ? ` ${backupProgress.percent}%` : ""}`
+                  ? `Preparing…${backupProgress?.percent !== null && backupProgress?.percent !== undefined ? ` ${backupProgress.percent}%` : ""}`
                   : "Download backup (.zip)"}
               </button>
               <button

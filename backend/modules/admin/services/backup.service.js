@@ -438,6 +438,12 @@ const runBackup = async (res) => {
     // CPU cost, worth avoiding at this concurrency.
     archive = archiver("zip", { zlib: { level: 6 } });
     archive.on("warning", (err) => logger.warn(`backup archive warning: ${err.message}`));
+    // Real entry-level progress once every append() has happened (see
+    // progress.setFinalizeProgress) - a no-op before then, since the total
+    // is still growing as audio gets queued and would misreport percentage.
+    archive.on("progress", (data) => {
+      progress.setFinalizeProgress(data.entries.processed, data.entries.total);
+    });
     const archiveError = new Promise((_, reject) => archive.on("error", reject));
 
     res.setHeader("Content-Type", "application/zip");
