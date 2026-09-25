@@ -108,7 +108,8 @@ export default function AdminDashboard() {
   const pending = backup?.pending || {};
   const canCleanup = !!backup?.canCleanup && !backup?.inProgress;
   const busyOp = backup?.inProgress; // "backup" | "cleanup" | "reset" | null
-  const backupPercent = backupBusy && backup?.progress?.active ? backup.progress.percent : null;
+  const backupProgress = backupBusy && backup?.progress?.active ? backup.progress : null;
+  const isFinalizing = backupProgress?.phase === "finalizing";
 
   return (
     <AdminLayout>
@@ -217,16 +218,18 @@ export default function AdminDashboard() {
               </p>
             )}
 
-            {backupPercent !== null && (
+            {backupProgress && (
               <div className="mb-4">
                 <div className="h-1.5 w-full max-w-xs rounded-full bg-primary-100 overflow-hidden">
                   <div
-                    className="h-full bg-primary-600 transition-all duration-300"
-                    style={{ width: `${backupPercent}%` }}
+                    className={`h-full bg-primary-600 transition-all duration-300 ${isFinalizing ? "animate-pulse w-full" : ""}`}
+                    style={isFinalizing ? undefined : { width: `${backupProgress.percent}%` }}
                   />
                 </div>
                 <p className="text-xs text-primary-400 mt-1">
-                  Fetching audio… {backup.progress.done}/{backup.progress.total} ({backupPercent}%)
+                  {isFinalizing
+                    ? "Compressing and streaming the zip…"
+                    : `Fetching audio… ${backupProgress.done}/${backupProgress.total} (${backupProgress.percent}%)`}
                 </p>
               </div>
             )}
@@ -238,7 +241,12 @@ export default function AdminDashboard() {
                 disabled={backupBusy || !!busyOp}
                 className="btn-primary inline-flex items-center gap-2"
               >
-                <Archive size={16} /> {backupBusy ? `Preparing…${backupPercent !== null ? ` ${backupPercent}%` : ""}` : "Download backup (.zip)"}
+                <Archive size={16} />{" "}
+                {backupBusy
+                  ? isFinalizing
+                    ? "Finalizing…"
+                    : `Preparing…${backupProgress ? ` ${backupProgress.percent}%` : ""}`
+                  : "Download backup (.zip)"}
               </button>
               <button
                 type="button"

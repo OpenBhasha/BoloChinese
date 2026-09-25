@@ -432,7 +432,11 @@ const runBackup = async (res) => {
     resolveAudioNames(orphans);
 
     // ── start streaming ──
-    archive = archiver("zip", { zlib: { level: 9 } });
+    // level 6 (zlib's own recommended balance) rather than 9 (max) - the CSV/
+    // JSON entries are the only ones actually compressed (see `store: true`
+    // below for audio), and 9 buys negligible extra size on text for a real
+    // CPU cost, worth avoiding at this concurrency.
+    archive = archiver("zip", { zlib: { level: 6 } });
     archive.on("warning", (err) => logger.warn(`backup archive warning: ${err.message}`));
     const archiveError = new Promise((_, reject) => archive.on("error", reject));
 
@@ -507,7 +511,10 @@ const runBackup = async (res) => {
       const url = entry.submission.audio.url;
       try {
         const buf = await fetchAudioBuffer(url);
-        archive.append(buf, { name: P(`${folderPrefix}/${entry.audioFilename}`) });
+        // WAV/PCM is already near-incompressible - paying deflate's CPU cost
+        // for it buys almost nothing and was the real bottleneck once
+        // fetching itself got fast. STORE just copies the bytes in.
+        archive.append(buf, { name: P(`${folderPrefix}/${entry.audioFilename}`), store: true });
         audioFiles += 1;
         audioBytes += buf.length;
       } catch (err) {
@@ -522,6 +529,7 @@ const runBackup = async (res) => {
         progress.increment();
       }
     });
+    progress.setPhase("finalizing");
 
     archive.append(csv(ROOT_PROGRESS_COLS, perUserProgress.map(shapeRootProgress)), { name: P("progress.csv") });
     archive.append(csv(USERS_COLS, ds.users.map(shapeUser)), { name: P("users.csv") });
