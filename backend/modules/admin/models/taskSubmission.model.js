@@ -57,6 +57,14 @@ const taskSubmissionSchema = new mongoose.Schema(
       type: Boolean,
       default: null,
     },
+    // Set only when pinyinVerified becomes true (an annotator confirming the
+    // text needs no correction is the countable "validated" action; false is
+    // just a transient "not correct yet" state, not an event of its own).
+    // Powers the admin dashboard's "validated today" figure.
+    pinyinVerifiedAt: {
+      type: Date,
+      default: null,
+    },
     correctedChineseTranscript: {
       type: String,
       trim: true,
@@ -72,6 +80,11 @@ const taskSubmissionSchema = new mongoose.Schema(
     isCorrected: {
       type: Boolean,
       default: false,
+    },
+    // Set when a correction is submitted. Powers "edited today".
+    correctedAt: {
+      type: Date,
+      default: null,
     },
     // Set when the annotator opens the edit screen and chooses Discard instead
     // of submitting a correction. Reversible via the reconsider action.

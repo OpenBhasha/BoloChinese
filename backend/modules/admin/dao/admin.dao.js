@@ -6,7 +6,7 @@ const ProjectAssignment = require("../models/projectAssignment.model");
 const TaskSubmission = require("../models/taskSubmission.model");
 const UserProgress = require("../models/userProgress.model");
 const BackupState = require("../models/backupState.model");
-const { kolkataDate } = require("../../../services/datetime");
+const { kolkataDate, kolkataDayRange } = require("../../../services/datetime");
 const { escapeRegex } = require("../../../services/pagination");
 
 // A task submission is "finished" once the annotator is done with it - audio
@@ -409,6 +409,31 @@ const getLedgerGrandTotals = async (date) => {
 const getLedgerRowsForUser = async (userId) =>
   UserProgress.find({ userId }).sort({ date: -1 }).lean();
 
+// Today's flow-metric counts (Kolkata calendar day), read directly off each
+// action's own timestamp on TaskSubmission - NOT off the ledger above, which
+// nothing ever writes to now that cleanup archives instead of hard-deleting
+// (see finalizeCleanup). The ledger was designed for an older "nightly wipe"
+// model; with it permanently empty, "today" can only ever equal "lifetime"
+// unless it's computed this way instead.
+const getTodayProgressByUser = async (userIds, date) => {
+  const { start, end } = kolkataDayRange(date);
+  const inRange = (field) => ({ $and: [{ $gte: [field, start] }, { $lt: [field, end] }] });
+  const rows = await TaskSubmission.aggregate([
+    { $match: { userId: { $in: userIds } } },
+    {
+      $group: {
+        _id: "$userId",
+        validated: { $sum: { $cond: [{ $and: [{ $eq: ["$pinyinVerified", true] }, inRange("$pinyinVerifiedAt")] }, 1, 0] } },
+        edited: { $sum: { $cond: [{ $and: [{ $eq: ["$isCorrected", true] }, inRange("$correctedAt")] }, 1, 0] } },
+        discarded: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "discarded"] }, inRange("$discarded.discardedAt")] }, 1, 0] } },
+        recorded: { $sum: { $cond: [inRange("$audio.uploadedAt"), 1, 0] } },
+        audioDurationSeconds: { $sum: { $cond: [inRange("$audio.uploadedAt"), { $ifNull: ["$audio.durationSeconds", 0] }, 0] } },
+      },
+    },
+  ]);
+  return new Map(rows.map((r) => [r._id.toString(), r]));
+};
+
 const shapeProgress = (s) => {
   const assigned = s.assigned || 0;
   const submitted = s.submitted || 0;
@@ -465,11 +490,11 @@ const getPerUserProgress = async () => {
   const activeUserIds = users.map((u) => u._id);
   const today = kolkataDate();
 
-  const [assignments, liveByUser, ledgerAllByUser, ledgerTodayByUser, taskCountRows, touchedByUser] = await Promise.all([
+  const [assignments, liveByUser, ledgerAllByUser, todayFlowByUser, taskCountRows, touchedByUser] = await Promise.all([
     ProjectAssignment.find({ userId: { $in: activeUserIds } }).select("userId projectId").lean(),
     getLiveProgressByUser(activeUserIds),
     getLedgerByUser(activeUserIds),
-    getLedgerByUser(activeUserIds, today),
+    getTodayProgressByUser(activeUserIds, today),
     // One grouped count instead of one countDocuments per user.
     Task.aggregate([{ $group: { _id: "$projectId", n: { $sum: 1 } } }]),
     getLiveTouchedCountByUser(activeUserIds),
@@ -498,7 +523,13 @@ const getPerUserProgress = async () => {
       // rather than folded into shapeProgress's lifetime subtraction.
       const pendingLive = Math.max(0, liveAssigned - (touchedByUser.get(key) || 0));
       const lifetime = { ...shapeProgress(addProgress(ledgerAllByUser.get(key), live)), pending: pendingLive };
-      const todayStats = { ...shapeProgress(addProgress(ledgerTodayByUser.get(key), live)), pending: pendingLive };
+      // assigned/submitted/completed/timeSpentMs stay lifetime figures here
+      // (a task isn't "assigned today") - only the flow metrics that
+      // genuinely happened today are swapped in.
+      const todayStats = {
+        ...shapeProgress({ ...live, ...(todayFlowByUser.get(key) || {}) }),
+        pending: pendingLive,
+      };
 
       return {
         _id: u._id,
@@ -926,6 +957,7 @@ module.exports = {
   getUserSubmissions,
   // progress ledger + backup/cleanup
   getLiveProgressByUser,
+  getTodayProgressByUser,
   getLedgerRowsForUser,
   getFinishedTaskIds,
   getBackupDataset,

@@ -17,4 +17,12 @@ const kolkataDateFormatter = new Intl.DateTimeFormat("en-CA", {
 // "2026-09-10" for the given instant (defaults to now), in Asia/Kolkata.
 const kolkataDate = (date = new Date()) => kolkataDateFormatter.format(date);
 
-module.exports = { KOLKATA_TZ, kolkataDate };
+// [start, end) UTC instants spanning one Kolkata calendar day ("2026-09-10",
+// defaults to today). Kolkata's +05:30 offset has no DST, so this is exact
+// with no timezone database involved.
+const kolkataDayRange = (date = kolkataDate()) => {
+  const start = new Date(`${date}T00:00:00+05:30`);
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+};
+
+module.exports = { KOLKATA_TZ, kolkataDate, kolkataDayRange };
