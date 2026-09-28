@@ -25,5 +25,6 @@ export const createTask = async (overrides = {}) => {
     chineseTranscript,
     pinyin,
     assignedTo: overrides.assignedTo ?? null,
+    archivedAt: overrides.archivedAt ?? null,
   });
 };
