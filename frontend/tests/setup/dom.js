@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
+import { stubLocation } from "../helpers/location.js";
 
 // jsdom's Blob predates the streams API. MSW needs Blob.stream() to build a
 // Response for any request the app makes with responseType: "blob" (audio
@@ -18,25 +19,7 @@ if (typeof Blob !== "undefined" && typeof Blob.prototype.stream !== "function") 
   };
 }
 
-// jsdom implements neither navigation nor object URLs. The axios client
-// redirects via `window.location.href` on a 401, and downloadBlob needs
-// createObjectURL; recording stubs keep both paths assertable.
-const stubLocation = () =>
-  Object.defineProperty(window, "location", {
-    configurable: true,
-    writable: true,
-    value: {
-      href: "http://localhost:3000/",
-      origin: "http://localhost:3000",
-      pathname: "/",
-      search: "",
-      hash: "",
-      assign: vi.fn(),
-      replace: vi.fn(),
-      reload: vi.fn(),
-    },
-  });
-
+// jsdom implements no object URLs; downloadBlob and the audio preview need them.
 const stubObjectUrls = () => {
   window.URL.createObjectURL = vi.fn(() => "blob:http://localhost:3000/stub");
   window.URL.revokeObjectURL = vi.fn();
