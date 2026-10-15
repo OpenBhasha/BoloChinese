@@ -22,11 +22,15 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// On 401, clear auth and redirect to login
+// On 401, clear auth and redirect to login. A 401 from /auth/* is a rejected
+// sign-in, not an expired session - redirecting there would reload the login
+// page and discard the error before the user can read it.
+const isAuthRequest = (config) => config?.url?.startsWith("/auth/");
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    if (err.response?.status === 401 && !isAuthRequest(err.config)) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       window.location.href = "/login";
