@@ -69,4 +69,12 @@ describe("API stubbing", () => {
     expect(localStorage.getItem("user")).toBeNull();
     expect(window.location.href).toBe("/login");
   });
+
+  it("does not treat a rejected sign-in as an expired session", async () => {
+    server.use(http.post(apiUrl("/auth/login"), () => apiError("Invalid email or password.", 401)));
+
+    await expect(api.post("/auth/login", {})).rejects.toThrow();
+
+    expect(window.location.href).not.toBe("/login");
+  });
 });
