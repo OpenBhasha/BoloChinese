@@ -236,13 +236,21 @@ const getTaskNavForUser = async (userId, projectId, currentTask) => {
       { createdAt: currentTask.createdAt, _id: { $gt: currentTask._id } },
     ],
   };
-  const [total, beforeCount, prev, next, completedCount] = await Promise.all([
+  const [total, beforeCount, prev, next, doneTaskIds] = await Promise.all([
     Task.countDocuments({ projectId, archivedAt: null }),
     Task.countDocuments(before),
     Task.findOne(before).sort({ createdAt: -1, _id: -1 }).select("_id").lean(),
     Task.findOne(after).sort(TASK_ORDER).select("_id").lean(),
-    TaskSubmission.countDocuments({ projectId, userId, status: { $in: TERMINAL_STATUSES } }),
+    TaskSubmission.distinct("taskId", { projectId, userId, status: { $in: TERMINAL_STATUSES } }),
   ]);
+  // Only work on tasks still in this list counts. Submissions outlive their
+  // task - cleanup archives finished tasks and admins can delete them - so
+  // counting every terminal submission measures against a `total` that no
+  // longer includes those tasks. Once enough tasks were archived/deleted the
+  // count overtook `total` and "Project finished" fired with tasks still pending.
+  const completedCount = doneTaskIds.length
+    ? await Task.countDocuments({ projectId, archivedAt: null, _id: { $in: doneTaskIds } })
+    : 0;
   return {
     position: beforeCount + 1,
     total,
