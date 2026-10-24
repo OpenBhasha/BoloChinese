@@ -1,1 +1,10 @@
-bolochinese_backup
+25-09-2026/
+
+# Local credentials (backup/.env holds an admin login) - keep .env.example tracked
+.env
+
+# macOS
+.DS_Store
+
+# Local Claude Code tooling
+.claude/
