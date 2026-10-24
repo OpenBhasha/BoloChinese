@@ -19,6 +19,7 @@ import {
 import { CheckCircle, Clock, ShieldCheck, FolderUp, Pencil, ChevronRight, Trash2 } from "lucide-react";
 import { PageSpinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
+import LoginAsUserButton from "../../components/admin/LoginAsUserButton";
 import { paginateRows } from "../../utils/pagination";
 import { formatDuration } from "../../utils/format";
 import toast from "react-hot-toast";
@@ -402,6 +403,8 @@ export default function AdminUsers() {
             <FolderUp size={13} /> Assign
           </button>
         ) : null}
+
+        {canAssign ? <LoginAsUserButton userId={u._id} /> : null}
 
         <button
           onClick={() => handleRowDelete(u)}

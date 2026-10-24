@@ -8,6 +8,8 @@ const config = {
     "mongodb://localhost:27017/bolo",
   jwtSecret: process.env.JWT_SECRET || "default_secret",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
+  // Admin "log in as user" tokens are deliberately short-lived.
+  impersonationExpiresIn: process.env.IMPERSONATION_EXPIRES_IN || "2h",
   nodeEnv: process.env.NODE_ENV || "development",
 
   // First (bootstrap) admin, seeded from the environment on startup.

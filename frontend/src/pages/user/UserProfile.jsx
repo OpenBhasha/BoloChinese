@@ -5,6 +5,7 @@ import { CheckCircle2, ChevronLeft, ExternalLink, Lock, Pencil, ShieldCheck, Use
 import UserLayout from "../../components/layout/UserLayout";
 import AdminLayout from "../../components/layout/AdminLayout";
 import UserResetDangerZone from "../../components/admin/UserResetDangerZone";
+import LoginAsUserButton from "../../components/admin/LoginAsUserButton";
 import { PageSpinner } from "../../components/ui/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { getMyProfile, updateMyProfile } from "../../api/user.api";
@@ -127,15 +128,20 @@ export default function UserProfile() {
               {isAdminView ? "Full access - edit name, email, phone." : "Update your name, email, or phone."}
             </p>
           </div>
-          {!editing && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="btn-secondary text-xs inline-flex items-center gap-1.5"
-            >
-              <Pencil size={13} /> Edit
-            </button>
-          )}
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {isAdminView && user.role === "user" && user.isVerified && (
+              <LoginAsUserButton userId={routeUserId} className="btn-secondary text-xs inline-flex items-center gap-1.5" />
+            )}
+            {!editing && (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="btn-secondary text-xs inline-flex items-center gap-1.5"
+              >
+                <Pencil size={13} /> Edit
+              </button>
+            )}
+          </div>
         </div>
 
         {editing ? (

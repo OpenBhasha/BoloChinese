@@ -34,6 +34,8 @@ export const verifyUser = (id) => api.patch(`/admin/users/${id}/verify`);
 export const updateUser = (id, data) => api.patch(`/admin/users/${id}`, data);
 export const deleteUser = (id) => api.delete(`/admin/users/${id}`);
 export const bulkDeleteUsers = (ids) => api.post(`/admin/users/bulk-delete`, { ids });
+// Returns { token, user } for a short-lived "logged in as this annotator" session.
+export const impersonateUser = (id) => api.post(`/admin/users/${id}/impersonate`);
 export const getAssignedProjectIdsByUser = (userId) => api.get(`/admin/users/${userId}/assigned-projects`);
 export const getUserSubmissions = (userId) => api.get(`/admin/users/${userId}/submissions`);
 export const assignProjectToUser = (projectId, userId) =>

@@ -1,4 +1,6 @@
+const jwt = require("jsonwebtoken");
 const dao = require("../dao/admin.dao");
+const config = require("../../../properties/config");
 const logger = require("../../../logging/logger");
 const xlsx = require("xlsx");
 const { parse: parseCsv } = require("csv-parse/sync");
@@ -100,6 +102,43 @@ const bulkDeleteUsers = async (ids = [], adminId) => {
   return { ...result, requestedCount: ids.length };
 };
 
+
+// Lets an admin act as an annotator. Mirrors the login rules (active +
+// verified), refuses other admins, and issues a short-lived token carrying
+// `impersonatedBy` so the session is attributable in logs.
+const impersonateUser = async (userId, adminId) => {
+  const user = await dao.getUserById(userId);
+  if (!user || user.deletedAt) {
+    const err = new Error("User not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (user.role !== "user") {
+    const err = new Error("You can only log in as an annotator account.");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!user.isVerified) {
+    const err = new Error("Verify this user before logging in as them.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const payload = { id: user._id, role: user.role, email: user.email, impersonatedBy: adminId };
+  const token = jwt.sign(payload, config.jwtSecret, { expiresIn: config.impersonationExpiresIn });
+  logger.info(`Admin ${adminId} started impersonating user ${user._id} (${user.email})`);
+
+  return {
+    token,
+    user: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isVerified: user.isVerified,
+    },
+  };
+};
 
 const getUserSubmissions = async (userId) => {
   const user = await dao.getUserById(userId);
@@ -800,6 +839,7 @@ module.exports = {
   getCloudinaryUsage,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
   deleteUser, bulkDeleteUsers,
+  impersonateUser,
   getUserSubmissions,
   assignProjectToUser,
   unassignProjectFromUser,

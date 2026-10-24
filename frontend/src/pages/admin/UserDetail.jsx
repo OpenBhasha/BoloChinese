@@ -6,6 +6,7 @@ import AdminLayout from "../../components/layout/AdminLayout";
 import Modal from "../../components/ui/Modal";
 import StatCard from "../../components/ui/StatCard";
 import UserResetDangerZone from "../../components/admin/UserResetDangerZone";
+import LoginAsUserButton from "../../components/admin/LoginAsUserButton";
 import { PageSpinner, Spinner } from "../../components/ui/Spinner";
 import PaginationControls from "../../components/admin/PaginationControls";
 import { paginateRows } from "../../utils/pagination";
@@ -120,6 +121,9 @@ export default function UserDetail() {
           >
             View profile
           </Link>
+          {progress.isVerified && (
+            <LoginAsUserButton userId={id} className="btn-secondary inline-flex items-center gap-2" />
+          )}
           <button
             type="button"
             onClick={handleExport}

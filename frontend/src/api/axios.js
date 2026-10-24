@@ -24,13 +24,32 @@ api.interceptors.request.use((config) => {
 
 // On 401, clear auth and redirect to login. A 401 from /auth/* is a rejected
 // sign-in, not an expired session - redirecting there would reload the login
-// page and discard the error before the user can read it.
+// page and discard the error before the user can read it. If an admin was
+// impersonating a user (the short-lived token just expired), drop back into
+// the admin's own session instead of kicking them out entirely.
 const isAuthRequest = (config) => config?.url?.startsWith("/auth/");
 
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401 && !isAuthRequest(err.config)) {
+      // Several requests are usually in flight at once. If this 401 belongs to
+      // a token we've already swapped out (e.g. an impersonation token the first
+      // failure just replaced with the admin's), don't clear the new session.
+      const sentToken = String(err.config?.headers?.Authorization || "").replace("Bearer ", "");
+      const currentToken = localStorage.getItem("token");
+      if (sentToken && currentToken && sentToken !== currentToken) return Promise.reject(err);
+
+      let adminSession = null;
+      try { adminSession = JSON.parse(localStorage.getItem("adminSession")); } catch { /* ignore */ }
+      if (adminSession?.token) {
+        localStorage.setItem("token", adminSession.token);
+        localStorage.setItem("user", JSON.stringify(adminSession.user));
+        localStorage.removeItem("adminSession");
+        window.location.href = adminSession.returnTo || "/admin";
+        return Promise.reject(err);
+      }
+      localStorage.removeItem("adminSession");
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       window.location.href = "/login";

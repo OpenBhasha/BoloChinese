@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { LayoutDashboard, LogOut, Mic2, Menu, User2 } from "lucide-react";
+import ImpersonationBanner from "./ImpersonationBanner";
 
 const NAV = [
   { to: "/user", label: "My Projects", icon: LayoutDashboard, end: true },
@@ -52,41 +53,44 @@ export default function UserLayout({ children }) {
   const handleLogout = () => { logout(); navigate("/login"); };
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Overlay (desktop + mobile - sidebar is drawer-style on every viewport).
-          z-40 puts it above the fixed recorder (z-20) and TaskNavBar (z-30). */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+    <div className="flex flex-col h-screen overflow-hidden">
+      <ImpersonationBanner />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Overlay (desktop + mobile - sidebar is drawer-style on every viewport).
+            z-40 puts it above the fixed recorder (z-20) and TaskNavBar (z-30). */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/60"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
 
-      {/* Sidebar - hidden by default, revealed via the menu button.
-          z-50 keeps it above the overlay and the fixed page chrome. */}
-      <aside className={`
-        sidebar-surface fixed inset-y-0 left-0 z-50 w-64 bg-surface-card border-r border-surface-border flex flex-col
-        transform transition-transform duration-200 ease-in-out
-        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-      `}>
-        <SidebarContent user={user} onLogout={handleLogout} onNavClick={() => setSidebarOpen(false)} />
-      </aside>
+        {/* Sidebar - hidden by default, revealed via the menu button.
+            z-50 keeps it above the overlay and the fixed page chrome. */}
+        <aside className={`
+          sidebar-surface fixed inset-y-0 left-0 z-50 w-64 bg-surface-card border-r border-surface-border flex flex-col
+          transform transition-transform duration-200 ease-in-out
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+        `}>
+          <SidebarContent user={user} onLogout={handleLogout} onNavClick={() => setSidebarOpen(false)} />
+        </aside>
 
-      {/* Main */}
-      <main className="flex-1 overflow-y-auto bg-surface scrollbar-hidden flex flex-col min-w-0">
-        {/* Top bar with menu button (all viewports) */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shrink-0">
-          <button onClick={() => setSidebarOpen(true)} className="!text-gray-800 hover:!text-gray-600 transition" aria-label="Open menu">
-            <Menu size={22} className="!text-gray-800" />
-          </button>
-          <div className="flex items-center gap-2">
-            <Mic2 className="text-gray-800" size={18} />
-            <span className="font-bold !text-gray-800 tracking-tight">Bolo</span>
+        {/* Main */}
+        <main className="flex-1 overflow-y-auto bg-surface scrollbar-hidden flex flex-col min-w-0">
+          {/* Top bar with menu button (all viewports) */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shrink-0">
+            <button onClick={() => setSidebarOpen(true)} className="!text-gray-800 hover:!text-gray-600 transition" aria-label="Open menu">
+              <Menu size={22} className="!text-gray-800" />
+            </button>
+            <div className="flex items-center gap-2">
+              <Mic2 className="text-gray-800" size={18} />
+              <span className="font-bold !text-gray-800 tracking-tight">Bolo</span>
+            </div>
+            <span className="text-xs !text-gray-600 font-semibold uppercase tracking-widest ml-1">User</span>
           </div>
-          <span className="text-xs !text-gray-600 font-semibold uppercase tracking-widest ml-1">User</span>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">{children}</div>
-      </main>
+          <div className="flex-1 overflow-y-auto p-4 md:p-8">{children}</div>
+        </main>
+      </div>
     </div>
   );
 }

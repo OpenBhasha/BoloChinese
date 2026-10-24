@@ -63,6 +63,12 @@ router.patch("/users/:id", [validateObjectId("id"), ...updateUserValidator, vali
 // user's email/phone/username become free for a fresh sign-up.
 router.delete("/users/:id", [validateObjectId("id"), validate], ctrl.deleteUser);
 router.post("/users/bulk-delete", ctrl.bulkDeleteUsers);
+// POST /users/:id/impersonate - "log in as" an active, verified annotator.
+// Returns a short-lived token (IMPERSONATION_EXPIRES_IN, default 2h) tagged
+// with `impersonatedBy`. Admin-only via the router guard above; the returned
+// token has role "user", so it can't reach any admin route or chain a second
+// impersonation.
+router.post("/users/:id/impersonate", [validateObjectId("id"), validate], ctrl.impersonateUser);
 // POST /users/:id/reset { scope: "tasks" | "progress", confirm: "RESET" }
 // Per-user danger zone, scoped to just this annotator's dedicated project.
 // "tasks" wipes tasks/submissions/audio and keeps their progress ledger;

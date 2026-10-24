@@ -151,6 +151,16 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
+const impersonateUser = async (req, res, next) => {
+  try {
+    const result = await svc.impersonateUser(req.params.id, req.user.id);
+    return successResponse(res, "Impersonation started.", result);
+  } catch (err) {
+    if (err.statusCode) return errorResponse(res, err.message, err.statusCode);
+    next(err);
+  }
+};
+
 const bulkDeleteUsers = async (req, res, next) => {
   try {
     const result = await svc.bulkDeleteUsers(req.body?.ids || [], req.user.id);
@@ -500,6 +510,7 @@ module.exports = {
   resetProjectData,
   getAllUsers, getPendingUsers, verifyUser, updateUser,
   deleteUser, bulkDeleteUsers,
+  impersonateUser,
   getUserSubmissions,
   assignProjectToUser,
   unassignProjectFromUser,

@@ -14,7 +14,10 @@ const authenticate = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, config.jwtSecret);
     req.user = decoded;
-    logger.debug(`Auth OK - user: ${decoded.id} role: ${decoded.role}`);
+    logger.debug(
+      `Auth OK - user: ${decoded.id} role: ${decoded.role}` +
+        (decoded.impersonatedBy ? ` (impersonated by admin ${decoded.impersonatedBy})` : "")
+    );
     next();
   } catch (err) {
     logger.warn(`Auth failed - invalid token | ${req.method} ${req.url}`);
