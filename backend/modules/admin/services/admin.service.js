@@ -545,7 +545,6 @@ const deleteTasksBulk = async (projectId, { ids = [], all = false } = {}) => {
   return { deletedCount, requestedCount: all ? deletedCount : ids.length };
 };
 
-const IMPORT_ROW_LIMIT = 25000;
 const DIALOGUE_ID_ALIASES = ["dialogueid", "dialogue_id", "id"];
 const CHINESE_TRANSCRIPT_ALIASES = ["chinesetranscript", "chinese_transcript", "transcript", "chinese"];
 const PINYIN_ALIASES = ["pinyin"];
@@ -597,12 +596,8 @@ const createTasksFromImport = async (projectId, fileBuffer, fileExtension) => {
     throw err;
   }
 
-  if (rows.length > IMPORT_ROW_LIMIT) {
-    const err = new Error(`Maximum ${IMPORT_ROW_LIMIT} tasks can be uploaded at once.`);
-    err.statusCode = 400;
-    throw err;
-  }
-
+  // No cap on the number of rows: the database round trips below are chunked
+  // in the DAO, so an import of any size stays within MongoDB's command limits.
   const rowErrors = [];
   const validDocs = []; // { rowNumber, doc: { projectId, dialogueId, chineseTranscript, pinyin } }
   const seenDialogueIds = new Set();

@@ -9,9 +9,10 @@ const SUPPORTED_EXTENSIONS = new Set([".xlsx", ".xls", ".csv"]);
 // MIME types for CSV (text/csv, application/vnd.ms-excel, application/csv,
 // text/plain depending on platform), so gating on MIME here would just be
 // unreliable rather than safer.
+// Deliberately no `limits`: an import may be as large as the admin needs. (Any
+// cap enforced by a reverse proxy in front of the app is outside this code.)
 const taskImportUpload = multer({
   storage,
-  limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const extension = path.extname(file.originalname || "").toLowerCase();
 

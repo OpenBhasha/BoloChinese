@@ -154,13 +154,32 @@ const addTaskToProject = async (projectId, taskId) => {
   return Project.findByIdAndUpdate(projectId, { $push: { tasks: taskId } }, { new: true });
 };
 
+// A single MongoDB command is capped at 16 MB, so a very large import is sent
+// in slices rather than as one giant $in / $push $each.
+const IMPORT_CHUNK_SIZE = 10000;
+const chunk = (items, size) => {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+};
+
 const addTasksToProject = async (projectId, taskIds) => {
-  return Project.findByIdAndUpdate(projectId, { $push: { tasks: { $each: taskIds } } }, { new: true });
+  let project = null;
+  for (const ids of chunk(taskIds, IMPORT_CHUNK_SIZE)) {
+    // eslint-disable-next-line no-await-in-loop
+    project = await Project.findByIdAndUpdate(projectId, { $push: { tasks: { $each: ids } } }, { new: true });
+  }
+  return project;
 };
 
 const getExistingDialogueIds = async (projectId, dialogueIds) => {
-  const existing = await Task.find({ projectId, dialogueId: { $in: dialogueIds } }).select("dialogueId").lean();
-  return existing.map((t) => t.dialogueId);
+  const found = [];
+  for (const ids of chunk(dialogueIds, IMPORT_CHUNK_SIZE)) {
+    // eslint-disable-next-line no-await-in-loop
+    const existing = await Task.find({ projectId, dialogueId: { $in: ids } }).select("dialogueId").lean();
+    found.push(...existing.map((t) => t.dialogueId));
+  }
+  return found;
 };
 
 // Bulk-insert pre-validated task docs (each { projectId, dialogueId, chineseTranscript, pinyin }),
