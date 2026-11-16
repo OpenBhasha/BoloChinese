@@ -172,3 +172,64 @@ describe("pending counts after a task is deleted and replaced", () => {
     expect(orphan.status).toBe("completed");
   });
 });
+
+/**
+ * Same orphaned-submission scenario, different symptom: the lifetime
+ * `completed` count includes submissions whose task was deleted, but the
+ * percentage's denominator is the CURRENT task set - so an annotator who had
+ * finished everything could read above 100%.
+ */
+describe("progressPercent after finished tasks are deleted", () => {
+  const rowFor = async () => {
+    const rows = await adminDao.getPerUserProgress();
+    return rows.find((r) => r._id.toString() === annotator._id.toString());
+  };
+
+  it("never exceeds 100% when completed work on deleted tasks outnumbers the live tasks", async () => {
+    const kept = await createTask({ projectId: project._id });
+    const deleted = await createTask({ projectId: project._id });
+    await TaskSubmission.create([
+      { taskId: kept._id, projectId: project._id, userId: annotator._id, status: "completed" },
+      { taskId: deleted._id, projectId: project._id, userId: annotator._id, status: "completed" },
+    ]);
+    await adminDao.deleteTask(deleted._id);
+
+    const row = await rowFor();
+
+    // 2 completed lifetime vs 1 live task used to give 200%.
+    expect(row.lifetime.completed).toBe(2);
+    expect(row.lifetime.assigned).toBe(1);
+    expect(row.lifetime.progressPercent).toBe(100);
+    expect(row.today.progressPercent).toBe(100);
+  });
+
+  it("measures only the live task set, ignoring work on deleted tasks", async () => {
+    const doneKept = await createTask({ projectId: project._id });
+    await createTask({ projectId: project._id }); // untouched
+    const deleted = await createTask({ projectId: project._id });
+    await TaskSubmission.create([
+      { taskId: doneKept._id, projectId: project._id, userId: annotator._id, status: "completed" },
+      { taskId: deleted._id, projectId: project._id, userId: annotator._id, status: "completed" },
+    ]);
+    await adminDao.deleteTask(deleted._id);
+
+    const row = await rowFor();
+
+    // 1 of the 2 live tasks is done. Counting the deleted one would give 100%.
+    expect(row.lifetime.progressPercent).toBe(50);
+    expect(row.lifetime.pending).toBe(1);
+  });
+
+  it("still counts discarded live tasks as done", async () => {
+    const completed = await createTask({ projectId: project._id });
+    const discarded = await createTask({ projectId: project._id });
+    await TaskSubmission.create([
+      { taskId: completed._id, projectId: project._id, userId: annotator._id, status: "completed" },
+      { taskId: discarded._id, projectId: project._id, userId: annotator._id, status: "discarded" },
+    ]);
+
+    const row = await rowFor();
+
+    expect(row.lifetime.progressPercent).toBe(100);
+  });
+});

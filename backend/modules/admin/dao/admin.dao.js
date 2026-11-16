@@ -434,12 +434,18 @@ const getTodayProgressByUser = async (userIds, date) => {
   return new Map(rows.map((r) => [r._id.toString(), r]));
 };
 
-const shapeProgress = (s) => {
+// `doneOnLiveTasks` ({ completed?, discarded? }) overrides the numerator of
+// progressPercent only. The displayed counts stay lifetime totals (they include
+// submissions on tasks that were later deleted), but the percentage is "how
+// much of my CURRENT task set is done", so its numerator must only count work
+// on tasks that still exist - otherwise it can exceed 100%.
+const shapeProgress = (s, doneOnLiveTasks = {}) => {
   const assigned = s.assigned || 0;
   const submitted = s.submitted || 0;
   const completed = s.completed || 0;
   const discarded = s.discarded || 0;
   const edited = s.edited || 0;
+  const doneForPercent = (doneOnLiveTasks.completed ?? completed) + (doneOnLiveTasks.discarded ?? discarded);
   return {
     assigned,
     submitted,
@@ -458,23 +464,33 @@ const shapeProgress = (s) => {
     // after that task is deleted and replaced by a different one, so the
     // subtraction drifts negative/wrong as soon as any task churn happens.
     pending: Math.max(0, assigned - submitted),
-    progressPercent: assigned ? Math.round(((completed + discarded) / assigned) * 100) : 0,
+    // Clamped as a safety net: a submission can outlive its project assignment
+    // while its task still exists, which would push the numerator past the
+    // (assignment-based) denominator.
+    progressPercent: assigned ? Math.min(100, Math.round((doneForPercent / assigned) * 100)) : 0,
   };
 };
 
-// How many of a user's submissions belong to a task that still exists right
-// now. Deleting a task keeps its submission for lifetime stats, but that
+// Per-user counts over submissions whose task still exists right now.
+// Deleting a task keeps its submission for lifetime stats, but that
 // submission no longer describes any currently-assigned task, so it must not
 // count as "touched" when working out how many of the CURRENT tasks are
-// still pending.
-const getLiveTouchedCountByUser = async (userIds) => {
+// still pending, nor as "done" toward the progress percentage.
+const getLiveTaskCountsByUser = async (userIds) => {
   const rows = await TaskSubmission.aggregate([
     { $match: { userId: { $in: userIds } } },
     { $lookup: { from: Task.collection.name, localField: "taskId", foreignField: "_id", as: "task" } },
     { $match: { "task.0": { $exists: true } } },
-    { $group: { _id: "$userId", touched: { $sum: 1 } } },
+    {
+      $group: {
+        _id: "$userId",
+        touched: { $sum: 1 },
+        completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
+        discarded: { $sum: { $cond: [{ $eq: ["$status", "discarded"] }, 1, 0] } },
+      },
+    },
   ]);
-  return new Map(rows.map((r) => [r._id.toString(), r.touched]));
+  return new Map(rows.map((r) => [r._id.toString(), r]));
 };
 
 // Per-user rollup for the admin dashboard's user progress table. Each row
@@ -490,14 +506,14 @@ const getPerUserProgress = async () => {
   const activeUserIds = users.map((u) => u._id);
   const today = kolkataDate();
 
-  const [assignments, liveByUser, ledgerAllByUser, todayFlowByUser, taskCountRows, touchedByUser] = await Promise.all([
+  const [assignments, liveByUser, ledgerAllByUser, todayFlowByUser, taskCountRows, liveTasksByUser] = await Promise.all([
     ProjectAssignment.find({ userId: { $in: activeUserIds } }).select("userId projectId").lean(),
     getLiveProgressByUser(activeUserIds),
     getLedgerByUser(activeUserIds),
     getTodayProgressByUser(activeUserIds, today),
     // One grouped count instead of one countDocuments per user.
     Task.aggregate([{ $group: { _id: "$projectId", n: { $sum: 1 } } }]),
-    getLiveTouchedCountByUser(activeUserIds),
+    getLiveTaskCountsByUser(activeUserIds),
   ]);
 
   const taskCountByProject = new Map(taskCountRows.map((r) => [String(r._id), r.n]));
@@ -521,13 +537,20 @@ const getPerUserProgress = async () => {
       // Pending isn't a lifetime figure - it's "how many of my CURRENT tasks
       // are untouched", so it's computed directly off the live task set
       // rather than folded into shapeProgress's lifetime subtraction.
-      const pendingLive = Math.max(0, liveAssigned - (touchedByUser.get(key) || 0));
-      const lifetime = { ...shapeProgress(addProgress(ledgerAllByUser.get(key), live)), pending: pendingLive };
+      const liveTasks = liveTasksByUser.get(key) || {};
+      const pendingLive = Math.max(0, liveAssigned - (liveTasks.touched || 0));
+      const doneOnLive = { completed: liveTasks.completed || 0, discarded: liveTasks.discarded || 0 };
+      const lifetime = {
+        ...shapeProgress(addProgress(ledgerAllByUser.get(key), live), doneOnLive),
+        pending: pendingLive,
+      };
       // assigned/submitted/completed/timeSpentMs stay lifetime figures here
       // (a task isn't "assigned today") - only the flow metrics that
       // genuinely happened today are swapped in.
       const todayStats = {
-        ...shapeProgress({ ...live, ...(todayFlowByUser.get(key) || {}) }),
+        // Today keeps its own discarded figure; only completed is narrowed to
+        // tasks that still exist so the percentage can't exceed 100.
+        ...shapeProgress({ ...live, ...(todayFlowByUser.get(key) || {}) }, { completed: doneOnLive.completed }),
         pending: pendingLive,
       };
 
